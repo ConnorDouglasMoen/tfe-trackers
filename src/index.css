@@ -1,0 +1,33 @@
+:root {
+  font-family: Roboto, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: normal;
+  color: rgba(255, 255, 255, 0.87);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Thin scrollbars matching OBR style */
+div::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+div::-webkit-scrollbar,
+textarea::-webkit-scrollbar {
+  background-color: transparent;
+  border-radius: 100px;
+  width: 6px;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
