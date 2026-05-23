@@ -2,7 +2,6 @@
 // TFE Character Data Types
 /////////////////////////////////////////////////////////////////////
 
-/** One injury slot — location, complications note, and treated flag. */
 export type InjurySlot = {
   id: string;
   location: string;
@@ -10,54 +9,46 @@ export type InjurySlot = {
   treated: boolean;
 };
 
-/**
- * Character type determines the default layout:
- *   "survivor" — full Survivor layout (strainMax 3-9, all injury types)
- *   "other"    — minimal layout (strainMax 1, only Serious by default)
- */
 export type CharacterType = "survivor" | "other";
 
-/**
- * Controls what is shown on the map above the token.
- *   showStrain       — render the strain checkbox row
- *   showConditions   — render condition text bubbles
- *   injuryDisplay    — "all" shows every enabled slot; "filled-only" hides empty slots
- */
 export type DisplaySettings = {
   showStrain: boolean;
   showConditions: boolean;
   injuryDisplay: "all" | "filled-only";
 };
 
-/** Full character data stored in OBR item metadata. */
+/** Data for one character type (Survivor or Other). Stored independently. */
 export type CharacterData = {
   characterType: CharacterType;
   displaySettings: DisplaySettings;
-
-  // --- Strain ---
   strainMax: number;
   strainCurrent: number;
-
-  // --- Injury type availability ---
   hasSerious: boolean;
-  seriousCount: number;   // 1 or 2
+  seriousCount: number;
   hasCritical: boolean;
   hasLethal: boolean;
-
-  // --- Injury slots ---
   seriousInjuries: [InjurySlot, InjurySlot];
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
-
-  // --- Conditions ---
   conditions: string[];
+};
+
+/**
+ * Top-level record stored in OBR item metadata.
+ * Both survivor and other blobs are kept independently.
+ * activeType determines which is shown in the UI and rendered on-map.
+ */
+export type TokenRecord = {
+  activeType: CharacterType;
+  survivor: CharacterData;
+  other: CharacterData;
 };
 
 /////////////////////////////////////////////////////////////////////
 // Constants
 /////////////////////////////////////////////////////////////////////
 
-export const CHARACTER_DATA_METADATA_ID = "characterData";
+export const TOKEN_RECORD_METADATA_ID = "tokenRecord";
 export const HIDDEN_METADATA_ID = "hidden";
 
 export const STRAIN_MIN = 1;
@@ -82,8 +73,7 @@ export function createInjurySlot(): InjurySlot {
   };
 }
 
-/** Default Survivor layout: all injury types, strain max 3. */
-export function createDefaultCharacterData(): CharacterData {
+export function createSurvivorData(): CharacterData {
   return {
     characterType: "survivor",
     displaySettings: { ...DEFAULT_DISPLAY_SETTINGS },
@@ -100,8 +90,7 @@ export function createDefaultCharacterData(): CharacterData {
   };
 }
 
-/** Default Other layout: 1 strain, 1 serious injury only. */
-export function createOtherCharacterData(): CharacterData {
+export function createOtherData(): CharacterData {
   return {
     characterType: "other",
     displaySettings: { ...DEFAULT_DISPLAY_SETTINGS },
@@ -118,8 +107,28 @@ export function createOtherCharacterData(): CharacterData {
   };
 }
 
+export function createDefaultTokenRecord(): TokenRecord {
+  return {
+    activeType: "survivor",
+    survivor: createSurvivorData(),
+    other: createOtherData(),
+  };
+}
+
+/** Returns the active CharacterData blob from a TokenRecord. */
+export function getActiveData(record: TokenRecord): CharacterData {
+  return record.activeType === "survivor" ? record.survivor : record.other;
+}
+
+/** Returns a new TokenRecord with the active blob replaced by `data`. */
+export function setActiveData(record: TokenRecord, data: CharacterData): TokenRecord {
+  return record.activeType === "survivor"
+    ? { ...record, survivor: data }
+    : { ...record, other: data };
+}
+
 /////////////////////////////////////////////////////////////////////
-// Type guard + migration
+// Type guards
 /////////////////////////////////////////////////////////////////////
 
 function isInjurySlot(v: unknown): v is InjurySlot {
@@ -132,7 +141,7 @@ function isInjurySlot(v: unknown): v is InjurySlot {
   );
 }
 
-export function isCharacterData(v: unknown): v is CharacterData {
+function isCharacterData(v: unknown): v is CharacterData {
   const d = v as CharacterData;
   if (typeof d?.strainMax !== "number") return false;
   if (typeof d?.strainCurrent !== "number") return false;
@@ -147,20 +156,62 @@ export function isCharacterData(v: unknown): v is CharacterData {
   return true;
 }
 
-/** Fill in any fields added after initial save. */
-export function migrateCharacterData(d: CharacterData): CharacterData {
+export function isTokenRecord(v: unknown): v is TokenRecord {
+  const r = v as TokenRecord;
+  return (
+    (r?.activeType === "survivor" || r?.activeType === "other") &&
+    isCharacterData(r?.survivor) &&
+    isCharacterData(r?.other)
+  );
+}
+
+/////////////////////////////////////////////////////////////////////
+// Migration
+/////////////////////////////////////////////////////////////////////
+
+function migrateCharacterData(d: CharacterData): CharacterData {
   return {
     ...d,
     characterType: d.characterType ?? "survivor",
     seriousCount: d.seriousCount ?? 2,
-    displaySettings: {
-      ...DEFAULT_DISPLAY_SETTINGS,
-      ...(d.displaySettings ?? {}),
-    },
+    displaySettings: { ...DEFAULT_DISPLAY_SETTINGS, ...(d.displaySettings ?? {}) },
     conditions: Array.isArray(d.conditions)
       ? d.conditions
       : typeof d.conditions === "string" && (d.conditions as string).length > 0
         ? [d.conditions as string]
         : [],
   };
+}
+
+/**
+ * Migrates a raw metadata value to a valid TokenRecord.
+ *
+ * Handles three cases:
+ *   1. Already a valid TokenRecord — migrate each blob individually.
+ *   2. A legacy CharacterData (old format before TokenRecord) — wrap it
+ *      into the appropriate slot and default the other slot.
+ *   3. Anything else — return a fresh default record.
+ */
+export function migrateToTokenRecord(raw: unknown): TokenRecord {
+  // Case 1: already a TokenRecord
+  if (isTokenRecord(raw)) {
+    return {
+      activeType: raw.activeType,
+      survivor: migrateCharacterData(raw.survivor),
+      other: migrateCharacterData(raw.other),
+    };
+  }
+
+  // Case 2: legacy single CharacterData blob
+  if (isCharacterData(raw)) {
+    const migrated = migrateCharacterData(raw);
+    const defaults = createDefaultTokenRecord();
+    if (migrated.characterType === "other") {
+      return { activeType: "other", survivor: defaults.survivor, other: migrated };
+    }
+    return { activeType: "survivor", survivor: migrated, other: defaults.other };
+  }
+
+  // Case 3: no recognisable data
+  return createDefaultTokenRecord();
 }

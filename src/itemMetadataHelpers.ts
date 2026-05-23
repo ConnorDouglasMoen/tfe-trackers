@@ -1,17 +1,22 @@
 import OBR, { Item } from "@owlbear-rodeo/sdk";
 import { getPluginId } from "./getPluginId";
 import {
-  CharacterData,
-  CHARACTER_DATA_METADATA_ID,
+  TokenRecord,
+  TOKEN_RECORD_METADATA_ID,
   HIDDEN_METADATA_ID,
-  isCharacterData,
-  migrateCharacterData,
-  createDefaultCharacterData,
+  migrateToTokenRecord,
+  createDefaultTokenRecord,
+  getActiveData,
+  CharacterData,
 } from "./characterDataHelpers";
 
-/** Write CharacterData to the currently selected item. */
-export async function writeCharacterDataToSelection(
-  data: CharacterData,
+/////////////////////////////////////////////////////////////////////
+// TokenRecord read / write
+/////////////////////////////////////////////////////////////////////
+
+/** Write a TokenRecord to the currently selected item. */
+export async function writeTokenRecordToSelection(
+  record: TokenRecord,
 ): Promise<void> {
   const selection = await OBR.player.getSelection();
   const selectedItems = await OBR.scene.items.getItems(selection);
@@ -22,45 +27,53 @@ export async function writeCharacterDataToSelection(
 
   OBR.scene.items.updateItems(selectedItems, (items) => {
     for (const item of items) {
-      item.metadata[getPluginId(CHARACTER_DATA_METADATA_ID)] = data;
+      item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
     }
   });
 }
 
-/** Read CharacterData from the currently selected item.
- *  Returns default data if none is stored yet. */
-export async function getCharacterDataFromSelection(
+/** Read and migrate a TokenRecord from the currently selected item. */
+export async function getTokenRecordFromSelection(
   items?: Item[],
-): Promise<CharacterData> {
+): Promise<TokenRecord> {
   if (items === undefined) items = await OBR.scene.items.getItems();
-
   const selection = await OBR.player.getSelection();
   const selectedItem = items.find((item) => item.id === selection?.[0]);
   if (selectedItem === undefined) throw new TypeError("No selected item found");
-
-  return getCharacterDataFromItem(selectedItem);
+  return getTokenRecordFromItem(selectedItem);
 }
 
-/** Extract, validate, and migrate CharacterData from an item's metadata.
- *  Falls back to Survivor defaults if the stored value is missing or invalid. */
-export function getCharacterDataFromItem(item: Item): CharacterData {
-  const raw = item.metadata[getPluginId(CHARACTER_DATA_METADATA_ID)];
-  if (raw === undefined) return createDefaultCharacterData();
-  if (!isCharacterData(raw)) {
-    console.warn("Invalid CharacterData found on item, using defaults:", raw);
-    return createDefaultCharacterData();
-  }
-  // Migrate to fill in any fields added after initial save (e.g. characterType, seriousCount)
-  return migrateCharacterData(raw);
+/**
+ * Extract and migrate a TokenRecord from an item's metadata.
+ * Also handles legacy CharacterData blobs saved before TokenRecord existed.
+ * Falls back to a fresh default record if nothing is stored.
+ */
+export function getTokenRecordFromItem(item: Item): TokenRecord {
+  // Check new key first
+  const raw = item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)];
+  if (raw !== undefined) return migrateToTokenRecord(raw);
+
+  // Fall back to legacy key (CHARACTER_DATA_METADATA_ID) for old tokens
+  const legacy = item.metadata[getPluginId("characterData")];
+  if (legacy !== undefined) return migrateToTokenRecord(legacy);
+
+  return createDefaultTokenRecord();
 }
 
-/** Read the "trackers hidden" flag from an item. */
+/** Convenience: get only the active CharacterData from an item (used by on-map display). */
+export function getActiveDataFromItem(item: Item): CharacterData {
+  return getActiveData(getTokenRecordFromItem(item));
+}
+
+/////////////////////////////////////////////////////////////////////
+// Hidden flag
+/////////////////////////////////////////////////////////////////////
+
 export function getHiddenFromItem(item: Item): boolean {
   const val = item.metadata[getPluginId(HIDDEN_METADATA_ID)];
   return typeof val === "boolean" ? val : false;
 }
 
-/** Write the "trackers hidden" flag to the selected item. */
 export async function writeHiddenToSelection(hidden: boolean): Promise<void> {
   const selection = await OBR.player.getSelection();
   const selectedItems = await OBR.scene.items.getItems(selection);

@@ -2,14 +2,9 @@ import { useEffect, useState } from "react";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useOwlbearStoreSync } from "../useOwlbearStoreSync";
 import { useCharacterDataStore } from "../useCharacterDataStore";
-import { writeCharacterDataToSelection } from "../itemMetadataHelpers";
+import { writeTokenRecordToSelection } from "../itemMetadataHelpers";
 import TokenMenu from "./TokenMenu";
 
-/**
- * Root app for the token context-menu embed.
- * Accepts isPopover so TokenMenu can hide the "Open Full Editor" button
- * when it is already rendered inside the popover.
- */
 export default function App({
   initialMode,
   initialRole,
@@ -30,7 +25,7 @@ export default function App({
   useEffect(() => {
     setThemeMode(initialMode);
     setRole(initialRole);
-    setWriteToItem(writeCharacterDataToSelection);
+    setWriteToItem(writeTokenRecordToSelection);
     setInitDone(true);
   }, []);
 

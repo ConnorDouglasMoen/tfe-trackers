@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import OBR, { Item } from "@owlbear-rodeo/sdk";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useCharacterDataStore } from "../useCharacterDataStore";
-import { getCharacterDataFromSelection } from "../itemMetadataHelpers";
+import { getTokenRecordFromSelection } from "../itemMetadataHelpers";
 import { getPluginId } from "../getPluginId";
 import { STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
 import StrainRow from "../components/StrainRow";
@@ -20,12 +20,9 @@ function Stepper({
   disableDecrement: boolean;
   disableIncrement: boolean;
 }): React.JSX.Element {
-  const base =
-    "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
-  const active =
-    "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
-  const disabled =
-    "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
+  const base = "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
+  const active = "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
+  const disabled = "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
   return (
     <div className="flex items-center gap-0.5">
       <button onClick={onDecrement} disabled={disableDecrement} className={`${base} ${disableDecrement ? disabled : active}`} aria-label="Decrease">−</button>
@@ -79,14 +76,7 @@ function ConditionsSection(): React.JSX.Element {
   );
 }
 
-/**
- * On-Map Display settings section.
- *
- * Toggles:
- *   Show Strain        — show/hide the strain box row above the token
- *   Show Conditions    — show/hide condition text bubbles
- *   Injuries           — "All" or "Filled Only"
- */
+/** On-Map Display settings toggles. */
 function DisplaySettingsSection(): React.JSX.Element {
   const ds = useCharacterDataStore((state) => state.data.displaySettings);
   const setDisplaySettings = useCharacterDataStore((state) => state.setDisplaySettings);
@@ -96,8 +86,6 @@ function DisplaySettingsSection(): React.JSX.Element {
     `relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition duration-150 ${on ? "bg-[#74649f]" : "bg-black/20 dark:bg-white/20"}`;
   const thumbClass = (on: boolean) =>
     `inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-150 ${on ? "translate-x-5" : "translate-x-1"}`;
-
-  /** Simple pill toggle — avoids ToggleButton component to keep label on left. */
   const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
     <button role="switch" aria-checked={checked} onClick={onChange} className={toggleClass(checked)}>
       <span className={thumbClass(checked)} />
@@ -106,24 +94,16 @@ function DisplaySettingsSection(): React.JSX.Element {
 
   return (
     <section>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-        On-Map Display
-      </h2>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">On-Map Display</h2>
       <div className="flex flex-col gap-2">
-
-        {/* Show Strain */}
         <div className={rowClass}>
           <span>Show Strain</span>
           <Toggle checked={ds.showStrain} onChange={() => setDisplaySettings({ showStrain: !ds.showStrain })} />
         </div>
-
-        {/* Show Conditions */}
         <div className={rowClass}>
           <span>Show Conditions</span>
           <Toggle checked={ds.showConditions} onChange={() => setDisplaySettings({ showConditions: !ds.showConditions })} />
         </div>
-
-        {/* Injury display mode */}
         <div className={rowClass}>
           <span>Injuries</span>
           <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
@@ -142,7 +122,6 @@ function DisplaySettingsSection(): React.JSX.Element {
             ))}
           </div>
         </div>
-
       </div>
     </section>
   );
@@ -150,15 +129,15 @@ function DisplaySettingsSection(): React.JSX.Element {
 
 /**
  * The main token context-menu panel.
- *
  * isPopover: when true (opened via "Open Full Editor"), hides the footer button.
  */
 export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
   const role = useOwlbearStore((state) => state.role);
 
+  // data is the active CharacterData blob derived from the record
   const data = useCharacterDataStore((state) => state.data);
-  const setData = useCharacterDataStore((state) => state.setData);
+  const setRecord = useCharacterDataStore((state) => state.setRecord);
   const setCharacterType = useCharacterDataStore((state) => state.setCharacterType);
   const setStrainCurrent = useCharacterDataStore((state) => state.setStrainCurrent);
   const setStrainMax = useCharacterDataStore((state) => state.setStrainMax);
@@ -174,8 +153,8 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
 
   useEffect(() => {
     const load = (items: Item[]) => {
-      getCharacterDataFromSelection(items)
-        .then((d) => { setData(d); setInitDone(true); })
+      getTokenRecordFromSelection(items)
+        .then((record) => { setRecord(record); setInitDone(true); })
         .catch(console.error);
     };
     OBR.scene.items.getItems().then(load);
