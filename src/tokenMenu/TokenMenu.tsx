@@ -9,7 +9,7 @@ import StrainRow from "../components/StrainRow";
 import InjurySlotCard from "../components/InjurySlotCard";
 
 /**
- * Small +/- stepper button used for strain max and Other-mode injury counts.
+ * Small +/- stepper used for strain max and Other-mode injury tier counts.
  */
 function Stepper({
   onDecrement,
@@ -26,7 +26,8 @@ function Stepper({
     "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
   const active =
     "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
-  const disabled = "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
+  const disabled =
+    "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
 
   return (
     <div className="flex items-center gap-0.5">
@@ -51,14 +52,80 @@ function Stepper({
 }
 
 /**
+ * Conditions section.
+ *
+ * A single-line input: pressing Enter saves the condition to a list.
+ * Each saved condition has an X button to delete it.
+ */
+function ConditionsSection(): React.JSX.Element {
+  const conditions = useCharacterDataStore((state) => state.data.conditions);
+  const addCondition = useCharacterDataStore((state) => state.addCondition);
+  const removeCondition = useCharacterDataStore((state) => state.removeCondition);
+
+  const [inputValue, setInputValue] = useState("");
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCondition(inputValue);
+      setInputValue("");
+    }
+  };
+
+  return (
+    <section>
+      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+        Conditions
+      </h2>
+
+      {/* Single-line input — Enter to add */}
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Add condition, press Enter…"
+        className="w-full rounded-lg border border-white/10 bg-black/10 px-2 py-1 text-sm text-text-primary outline-none placeholder:text-text-disabled dark:bg-white/5 dark:text-text-primary-dark dark:placeholder:text-text-disabled-dark"
+      />
+
+      {/* Saved conditions list */}
+      {conditions.length > 0 && (
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {conditions.map((condition, index) => (
+            <li
+              key={index}
+              className="flex items-center justify-between gap-2 rounded-md bg-black/10 px-2 py-1 dark:bg-white/5"
+            >
+              <span className="text-sm text-text-primary dark:text-text-primary-dark">
+                {condition}
+              </span>
+              <button
+                onClick={() => removeCondition(index)}
+                aria-label={`Remove condition: ${condition}`}
+                className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+              >
+                {/* X icon */}
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
  * The main token context-menu panel.
  *
  * Two modes controlled by a toggle at the top:
  *   Survivor — fixed layout: strain 1-9, all injury types, no S/C/L toggles
  *   Other    — minimal default (1 strain, 1 serious); +/- buttons to add tiers
  *
- * isPopover: when true (opened via "Open Full Editor"), hides the footer button
- * so it doesn't appear inside its own popover.
+ * isPopover: when true (opened via "Open Full Editor"), hides the footer button.
  */
 export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
@@ -76,7 +143,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
   const setSeriousCount = useCharacterDataStore((state) => state.setSeriousCount);
   const setHasCritical = useCharacterDataStore((state) => state.setHasCritical);
   const setHasLethal = useCharacterDataStore((state) => state.setHasLethal);
-  const setConditions = useCharacterDataStore((state) => state.setConditions);
 
   const [initDone, setInitDone] = useState(false);
 
@@ -98,8 +164,7 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
 
   const isSurvivor = data.characterType === "survivor";
 
-  // ── Injury tier controls for Other mode ─────────────────────────────────
-  // Serious: toggle between 0, 1, and 2 slots
+  // Other mode: Serious steps 0 → 1 → 2
   const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
   const adjustSerious = (delta: 1 | -1) => {
     const next = seriousLevel + delta;
@@ -107,8 +172,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
     else if (next === 1) { setHasSerious(true); setSeriousCount(1); }
     else if (next === 2) { setHasSerious(true); setSeriousCount(2); }
   };
-
-  // Critical and Lethal: simple on/off
   const adjustCritical = (delta: 1 | -1) => setHasCritical(delta > 0);
   const adjustLethal = (delta: 1 | -1) => setHasLethal(delta > 0);
 
@@ -139,7 +202,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
               Strain
             </h2>
-            {/* +/- stepper for strain max */}
             <div className="flex items-center gap-1.5 text-xs text-text-secondary dark:text-text-secondary-dark">
               <span>Max: {data.strainMax}</span>
               <Stepper
@@ -166,11 +228,8 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
             <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
               Injuries
             </h2>
-
-            {/* Other mode: +/- buttons per injury tier */}
             {!isSurvivor && (
               <div className="flex items-center gap-2">
-                {/* Serious: 0 / 1 / 2 */}
                 <div className="flex items-center gap-0.5">
                   <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">S</span>
                   <Stepper
@@ -180,7 +239,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
                     disableIncrement={seriousLevel >= 2}
                   />
                 </div>
-                {/* Critical: 0 / 1 */}
                 <div className="flex items-center gap-0.5">
                   <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">C</span>
                   <Stepper
@@ -190,7 +248,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
                     disableIncrement={data.hasCritical}
                   />
                 </div>
-                {/* Lethal: 0 / 1 */}
                 <div className="flex items-center gap-0.5">
                   <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">L</span>
                   <Stepper
@@ -205,7 +262,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
           </div>
 
           <div className="flex flex-col gap-2">
-            {/* Serious slots — show 1 or 2 based on seriousCount */}
             {data.hasSerious && (
               <>
                 <InjurySlotCard
@@ -249,19 +305,7 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
         </section>
 
         {/* ── Conditions ─────────────────────────────────────────── */}
-        <section>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-            Conditions
-          </h2>
-          <textarea
-            value={data.conditions}
-            onChange={(e) => setConditions(e.target.value)}
-            onBlur={(e) => setConditions(e.target.value)}
-            placeholder="Active conditions…"
-            rows={3}
-            className="w-full resize-none rounded-lg border border-white/10 bg-black/10 p-2 text-sm text-text-primary outline-none placeholder:text-text-disabled dark:bg-white/5 dark:text-text-primary-dark dark:placeholder:text-text-disabled-dark"
-          />
-        </section>
+        <ConditionsSection />
 
         {/* ── Footer — hidden when already inside the popover ────── */}
         {role === "GM" && !isPopover && (
@@ -270,7 +314,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
               onClick={() =>
                 OBR.popover.open({
                   id: getPluginId("token-editor"),
-                  // Pass ?popover=1 so the opened page knows to hide this button
                   url: "/src/tokenMenu/tokenMenu.html?popover=1",
                   height: 600,
                   width: 380,

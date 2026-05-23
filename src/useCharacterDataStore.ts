@@ -32,8 +32,9 @@ interface CharacterDataState {
   setHasCritical: (val: boolean) => void;
   setHasLethal: (val: boolean) => void;
 
-  // --- Conditions ---
-  setConditions: (text: string) => void;
+  // --- Conditions (array) ---
+  addCondition: (text: string) => void;
+  removeCondition: (index: number) => void;
 }
 
 export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
@@ -43,17 +44,13 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
   setData: (data) => set({ data }),
   setWriteToItem: (writeToItem) => set({ writeToItem }),
 
-  /**
-   * Switching character type resets to the appropriate default layout,
-   * but preserves injury slot text the user may have already entered.
-   */
+  /** Switching type resets layout defaults but preserves injury text and conditions. */
   setCharacterType: (type) =>
     set((state) => {
       const template =
         type === "survivor" ? createDefaultCharacterData() : createOtherCharacterData();
       const merged: CharacterData = {
         ...template,
-        // Preserve existing injury text across type switches
         seriousInjuries: state.data.seriousInjuries,
         criticalInjury: state.data.criticalInjury,
         lethalInjury: state.data.lethalInjury,
@@ -93,15 +90,24 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
     ),
 
   setHasSerious: (hasSerious) => set((state) => mutate(state, { hasSerious })),
-
-  setSeriousCount: (seriousCount) =>
-    set((state) => mutate(state, { seriousCount })),
-
+  setSeriousCount: (seriousCount) => set((state) => mutate(state, { seriousCount })),
   setHasCritical: (hasCritical) => set((state) => mutate(state, { hasCritical })),
-
   setHasLethal: (hasLethal) => set((state) => mutate(state, { hasLethal })),
 
-  setConditions: (conditions) => set((state) => mutate(state, { conditions })),
+  /** Append a new condition string to the list. */
+  addCondition: (text) =>
+    set((state) => {
+      const trimmed = text.trim();
+      if (trimmed === "") return state;
+      return mutate(state, { conditions: [...state.data.conditions, trimmed] });
+    }),
+
+  /** Remove the condition at the given index. */
+  removeCondition: (index) =>
+    set((state) => {
+      const updated = state.data.conditions.filter((_, i) => i !== index);
+      return mutate(state, { conditions: updated });
+    }),
 }));
 
 function mutate(

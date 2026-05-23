@@ -26,19 +26,19 @@ export type CharacterData = {
   strainMax: number;
   strainCurrent: number;
 
-  // --- Injury type availability (controlled by +/- in Other mode) ---
+  // --- Injury type availability ---
   hasSerious: boolean;
-  seriousCount: number;   // 1 or 2 (only meaningful when hasSerious is true)
+  seriousCount: number;   // 1 or 2
   hasCritical: boolean;
   hasLethal: boolean;
 
-  // --- Injury slots (always present in data; rendered based on has* flags) ---
+  // --- Injury slots ---
   seriousInjuries: [InjurySlot, InjurySlot];
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
 
-  // --- Conditions ---
-  conditions: string;
+  // --- Conditions: stored as an array of strings, one per condition ---
+  conditions: string[];
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -65,7 +65,7 @@ export function createInjurySlot(): InjurySlot {
   };
 }
 
-/** Default Survivor layout: all injury types, strain max 3 (minimum for Survivors). */
+/** Default Survivor layout: all injury types, strain max 3. */
 export function createDefaultCharacterData(): CharacterData {
   return {
     characterType: "survivor",
@@ -78,7 +78,7 @@ export function createDefaultCharacterData(): CharacterData {
     seriousInjuries: [createInjurySlot(), createInjurySlot()],
     criticalInjury: createInjurySlot(),
     lethalInjury: createInjurySlot(),
-    conditions: "",
+    conditions: [],
   };
 }
 
@@ -95,7 +95,7 @@ export function createOtherCharacterData(): CharacterData {
     seriousInjuries: [createInjurySlot(), createInjurySlot()],
     criticalInjury: createInjurySlot(),
     lethalInjury: createInjurySlot(),
-    conditions: "",
+    conditions: [],
   };
 }
 
@@ -113,8 +113,7 @@ function isInjurySlot(v: unknown): v is InjurySlot {
   );
 }
 
-/** Runtime validation of a CharacterData object read from OBR metadata.
- *  Falls back gracefully for tokens saved before the characterType field existed. */
+/** Runtime validation of a CharacterData object read from OBR metadata. */
 export function isCharacterData(v: unknown): v is CharacterData {
   const d = v as CharacterData;
   if (typeof d?.strainMax !== "number") return false;
@@ -122,20 +121,27 @@ export function isCharacterData(v: unknown): v is CharacterData {
   if (typeof d?.hasSerious !== "boolean") return false;
   if (typeof d?.hasCritical !== "boolean") return false;
   if (typeof d?.hasLethal !== "boolean") return false;
-  if (!Array.isArray(d?.seriousInjuries) || d.seriousInjuries.length !== 2)
-    return false;
+  if (!Array.isArray(d?.seriousInjuries) || d.seriousInjuries.length !== 2) return false;
   if (!d.seriousInjuries.every(isInjurySlot)) return false;
   if (!isInjurySlot(d?.criticalInjury)) return false;
   if (!isInjurySlot(d?.lethalInjury)) return false;
-  if (typeof d?.conditions !== "string") return false;
+  // conditions may be a legacy string or a new string[] — both pass here;
+  // migrateCharacterData normalises it to string[].
+  if (d?.conditions === undefined) return false;
   return true;
 }
 
 /** Migrate older CharacterData that may be missing newer fields. */
 export function migrateCharacterData(d: CharacterData): CharacterData {
   return {
+    ...d,
     characterType: d.characterType ?? "survivor",
     seriousCount: d.seriousCount ?? 2,
-    ...d,
+    // Migrate legacy plain-string conditions to string[]
+    conditions: Array.isArray(d.conditions)
+      ? d.conditions
+      : typeof d.conditions === "string" && d.conditions.length > 0
+        ? [d.conditions]
+        : [],
   };
 }
