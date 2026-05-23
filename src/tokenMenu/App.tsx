@@ -7,14 +7,17 @@ import TokenMenu from "./TokenMenu";
 
 /**
  * Root app for the token context-menu embed.
- * Wires up OBR sync hooks and injects the write function into the store.
+ * Accepts isPopover so TokenMenu can hide the "Open Full Editor" button
+ * when it is already rendered inside the popover.
  */
 export default function App({
   initialMode,
   initialRole,
+  isPopover,
 }: {
   initialMode: "DARK" | "LIGHT";
   initialRole: "PLAYER" | "GM";
+  isPopover: boolean;
 }): React.JSX.Element {
   useOwlbearStoreSync();
 
@@ -22,7 +25,6 @@ export default function App({
   const setThemeMode = useOwlbearStore((state) => state.setThemeMode);
   const setWriteToItem = useCharacterDataStore((state) => state.setWriteToItem);
 
-  // Guard against rendering before initial state is applied to avoid flash.
   const [initDone, setInitDone] = useState(false);
 
   useEffect(() => {
@@ -34,5 +36,5 @@ export default function App({
 
   if (!initDone) return <></>;
 
-  return <TokenMenu />;
+  return <TokenMenu isPopover={isPopover} />;
 }

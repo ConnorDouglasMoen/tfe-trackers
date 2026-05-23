@@ -1,41 +1,44 @@
 /////////////////////////////////////////////////////////////////////
 // TFE Character Data Types
-//
-// Characters in Tales from Elsewhere track:
-//   - Strain (1-9 checkboxes; Survivors start at 3-9)
-//   - Injuries (Serious x2, Critical x1, Lethal x1)
-//   - Conditions (free text)
-//
-// Not all stat blocks have all injury tiers. The has* flags control
-// which sections render in the UI.
 /////////////////////////////////////////////////////////////////////
 
 /** One injury slot — location, complications note, and treated flag. */
 export type InjurySlot = {
   id: string;
-  location: string;       // e.g. "Left Arm", "Chest"
-  complications: string;  // free-text complication note
-  treated: boolean;       // checked when the injury has been treated
+  location: string;
+  complications: string;
+  treated: boolean;
 };
+
+/**
+ * Character type determines the default layout:
+ *   "survivor" — full Survivor layout (strainMax 3-9, all injury types)
+ *   "other"    — minimal layout (strainMax 1, only Serious by default)
+ *                with +/- controls for each injury tier
+ */
+export type CharacterType = "survivor" | "other";
 
 /** Full character data stored in OBR item metadata. */
 export type CharacterData = {
-  // --- Strain ---
-  strainMax: number;       // maximum strain boxes (1-9)
-  strainCurrent: number;   // how many boxes are currently filled (0-strainMax)
+  characterType: CharacterType;
 
-  // --- Injury type availability ---
-  hasSerious: boolean;     // whether this token has Serious Injury slots
-  hasCritical: boolean;    // whether this token has a Critical Injury slot
-  hasLethal: boolean;      // whether this token has a Lethal Injury slot
+  // --- Strain ---
+  strainMax: number;
+  strainCurrent: number;
+
+  // --- Injury type availability (controlled by +/- in Other mode) ---
+  hasSerious: boolean;
+  seriousCount: number;   // 1 or 2 (only meaningful when hasSerious is true)
+  hasCritical: boolean;
+  hasLethal: boolean;
 
   // --- Injury slots (always present in data; rendered based on has* flags) ---
-  seriousInjuries: [InjurySlot, InjurySlot]; // two Serious Injury slots
+  seriousInjuries: [InjurySlot, InjurySlot];
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
 
   // --- Conditions ---
-  conditions: string;      // free-text temporary statuses
+  conditions: string;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -47,7 +50,6 @@ export const HIDDEN_METADATA_ID = "hidden";
 
 export const STRAIN_MIN = 1;
 export const STRAIN_MAX = 9;
-export const SURVIVOR_STRAIN_MIN = 3;
 
 /////////////////////////////////////////////////////////////////////
 // Factory helpers
@@ -63,14 +65,33 @@ export function createInjurySlot(): InjurySlot {
   };
 }
 
-/** Create a default CharacterData for a Survivor (all injury types, strain 3-9). */
+/** Default Survivor layout: all injury types, strain max 3 (minimum for Survivors). */
 export function createDefaultCharacterData(): CharacterData {
   return {
-    strainMax: 9,
+    characterType: "survivor",
+    strainMax: 3,
     strainCurrent: 0,
     hasSerious: true,
+    seriousCount: 2,
     hasCritical: true,
     hasLethal: true,
+    seriousInjuries: [createInjurySlot(), createInjurySlot()],
+    criticalInjury: createInjurySlot(),
+    lethalInjury: createInjurySlot(),
+    conditions: "",
+  };
+}
+
+/** Default Other layout: 1 strain, 1 serious injury only. */
+export function createOtherCharacterData(): CharacterData {
+  return {
+    characterType: "other",
+    strainMax: 1,
+    strainCurrent: 0,
+    hasSerious: true,
+    seriousCount: 1,
+    hasCritical: false,
+    hasLethal: false,
     seriousInjuries: [createInjurySlot(), createInjurySlot()],
     criticalInjury: createInjurySlot(),
     lethalInjury: createInjurySlot(),
@@ -92,7 +113,8 @@ function isInjurySlot(v: unknown): v is InjurySlot {
   );
 }
 
-/** Runtime validation of a CharacterData object read from OBR metadata. */
+/** Runtime validation of a CharacterData object read from OBR metadata.
+ *  Falls back gracefully for tokens saved before the characterType field existed. */
 export function isCharacterData(v: unknown): v is CharacterData {
   const d = v as CharacterData;
   if (typeof d?.strainMax !== "number") return false;
@@ -107,4 +129,13 @@ export function isCharacterData(v: unknown): v is CharacterData {
   if (!isInjurySlot(d?.lethalInjury)) return false;
   if (typeof d?.conditions !== "string") return false;
   return true;
+}
+
+/** Migrate older CharacterData that may be missing newer fields. */
+export function migrateCharacterData(d: CharacterData): CharacterData {
+  return {
+    characterType: d.characterType ?? "survivor",
+    seriousCount: d.seriousCount ?? 2,
+    ...d,
+  };
 }

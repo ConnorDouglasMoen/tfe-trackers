@@ -5,7 +5,7 @@ import { HIDDEN_METADATA_ID } from "../characterDataHelpers";
 // The outline icon shown in the OBR context menu button.
 // Replace this path once the logo SVG is added to /public.
 const menuIcon = new URL(
-  "../../public/tfe-trackers-logo-outline.svg",
+  "../../public/tfe-cowboy.svg",
   import.meta.url,
 ).toString();
 

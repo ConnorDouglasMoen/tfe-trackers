@@ -1,26 +1,23 @@
 import { create } from "zustand";
 import {
   CharacterData,
+  CharacterType,
   InjurySlot,
   createDefaultCharacterData,
+  createOtherCharacterData,
   STRAIN_MAX,
   STRAIN_MIN,
 } from "./characterDataHelpers";
 
-/**
- * Zustand store for the character data of the currently selected token.
- *
- * `writeToItem` is injected by the entry-point App so the store can persist
- * changes back to OBR without knowing the OBR API directly.
- */
 interface CharacterDataState {
   data: CharacterData;
   writeToItem: ((data: CharacterData) => Promise<void>) | undefined;
 
-  /** Replace the entire data object (e.g. when the item selection changes). */
   setData: (data: CharacterData) => void;
-  /** Inject the OBR write function from the App component. */
   setWriteToItem: (fn: (data: CharacterData) => Promise<void>) => void;
+
+  // --- Character type ---
+  setCharacterType: (type: CharacterType) => void;
 
   // --- Strain ---
   setStrainCurrent: (current: number) => void;
@@ -31,6 +28,7 @@ interface CharacterDataState {
   updateCriticalInjury: (patch: Partial<InjurySlot>) => void;
   updateLethalInjury: (patch: Partial<InjurySlot>) => void;
   setHasSerious: (val: boolean) => void;
+  setSeriousCount: (count: 1 | 2) => void;
   setHasCritical: (val: boolean) => void;
   setHasLethal: (val: boolean) => void;
 
@@ -45,9 +43,27 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
   setData: (data) => set({ data }),
   setWriteToItem: (writeToItem) => set({ writeToItem }),
 
+  /**
+   * Switching character type resets to the appropriate default layout,
+   * but preserves injury slot text the user may have already entered.
+   */
+  setCharacterType: (type) =>
+    set((state) => {
+      const template =
+        type === "survivor" ? createDefaultCharacterData() : createOtherCharacterData();
+      const merged: CharacterData = {
+        ...template,
+        // Preserve existing injury text across type switches
+        seriousInjuries: state.data.seriousInjuries,
+        criticalInjury: state.data.criticalInjury,
+        lethalInjury: state.data.lethalInjury,
+        conditions: state.data.conditions,
+      };
+      return mutate(state, merged);
+    }),
+
   setStrainCurrent: (current) =>
     set((state) => {
-      // Clamp to [0, strainMax]
       const clamped = Math.max(0, Math.min(state.data.strainMax, current));
       return mutate(state, { strainCurrent: clamped });
     }),
@@ -55,7 +71,6 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
   setStrainMax: (max) =>
     set((state) => {
       const clamped = Math.max(STRAIN_MIN, Math.min(STRAIN_MAX, max));
-      // Also clamp current strain if it now exceeds new max
       const strainCurrent = Math.min(state.data.strainCurrent, clamped);
       return mutate(state, { strainMax: clamped, strainCurrent });
     }),
@@ -77,23 +92,18 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
       mutate(state, { lethalInjury: { ...state.data.lethalInjury, ...patch } }),
     ),
 
-  setHasSerious: (hasSerious) =>
-    set((state) => mutate(state, { hasSerious })),
+  setHasSerious: (hasSerious) => set((state) => mutate(state, { hasSerious })),
 
-  setHasCritical: (hasCritical) =>
-    set((state) => mutate(state, { hasCritical })),
+  setSeriousCount: (seriousCount) =>
+    set((state) => mutate(state, { seriousCount })),
 
-  setHasLethal: (hasLethal) =>
-    set((state) => mutate(state, { hasLethal })),
+  setHasCritical: (hasCritical) => set((state) => mutate(state, { hasCritical })),
 
-  setConditions: (conditions) =>
-    set((state) => mutate(state, { conditions })),
+  setHasLethal: (hasLethal) => set((state) => mutate(state, { hasLethal })),
+
+  setConditions: (conditions) => set((state) => mutate(state, { conditions })),
 }));
 
-/**
- * Apply a partial patch to state.data, trigger the OBR write side-effect,
- * and return the new state slice.
- */
 function mutate(
   state: CharacterDataState,
   patch: Partial<CharacterData>,

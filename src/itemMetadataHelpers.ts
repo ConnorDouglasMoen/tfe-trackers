@@ -5,12 +5,9 @@ import {
   CHARACTER_DATA_METADATA_ID,
   HIDDEN_METADATA_ID,
   isCharacterData,
+  migrateCharacterData,
   createDefaultCharacterData,
 } from "./characterDataHelpers";
-
-/////////////////////////////////////////////////////////////////////
-// Read / Write CharacterData from OBR item metadata
-/////////////////////////////////////////////////////////////////////
 
 /** Write CharacterData to the currently selected item. */
 export async function writeCharacterDataToSelection(
@@ -20,9 +17,7 @@ export async function writeCharacterDataToSelection(
   const selectedItems = await OBR.scene.items.getItems(selection);
 
   if (selection === undefined || selection.length !== 1) {
-    throw new Error(
-      `Expected 1 selected item, got ${selection?.length ?? 0}.`,
-    );
+    throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
   }
 
   OBR.scene.items.updateItems(selectedItems, (items) => {
@@ -46,8 +41,8 @@ export async function getCharacterDataFromSelection(
   return getCharacterDataFromItem(selectedItem);
 }
 
-/** Extract and validate CharacterData from an item's metadata.
- *  Falls back to default data if the stored value is missing or invalid. */
+/** Extract, validate, and migrate CharacterData from an item's metadata.
+ *  Falls back to Survivor defaults if the stored value is missing or invalid. */
 export function getCharacterDataFromItem(item: Item): CharacterData {
   const raw = item.metadata[getPluginId(CHARACTER_DATA_METADATA_ID)];
   if (raw === undefined) return createDefaultCharacterData();
@@ -55,7 +50,8 @@ export function getCharacterDataFromItem(item: Item): CharacterData {
     console.warn("Invalid CharacterData found on item, using defaults:", raw);
     return createDefaultCharacterData();
   }
-  return raw;
+  // Migrate to fill in any fields added after initial save (e.g. characterType, seriousCount)
+  return migrateCharacterData(raw);
 }
 
 /** Read the "trackers hidden" flag from an item. */
@@ -70,9 +66,7 @@ export async function writeHiddenToSelection(hidden: boolean): Promise<void> {
   const selectedItems = await OBR.scene.items.getItems(selection);
 
   if (selection === undefined || selection.length !== 1) {
-    throw new Error(
-      `Expected 1 selected item, got ${selection?.length ?? 0}.`,
-    );
+    throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
   }
 
   OBR.scene.items.updateItems(selectedItems, (items) => {

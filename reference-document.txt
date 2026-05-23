@@ -11,109 +11,105 @@ SYSTEM: Tales from Elsewhere (TFE)
 
 HP SYSTEM: Strain + Injuries
 - Strain: integer 1-9. Survivors (Player Characters) have 3-9 strain.
-  Represented as checkboxes (filled = used/taken).
+  Represented as checkboxes (filled = used/taken, shown as dark red X).
 - Injuries: up to 3 types per character (Survivors have all 3):
     * Serious Injuries: up to 2 slots
     * Critical Injury:  1 slot
     * Lethal Injury:    1 slot
-  Not all stat blocks have all injury types (e.g. minions may lack
-  Critical/Lethal). Each injury slot has:
-    - Location (text, e.g. "Left Arm", "Chest")
-    - Complications (text box, free text)
-    - Treated checkbox (boolean)
+  Not all stat blocks have all injury types. Each injury slot has:
+    - Location (text + CLEAR button)
+    - Complications (text + CLEAR button; faded + strikethrough when Treated)
+    - Treated checkbox (ToggleButton)
 
 CONDITIONS:
-- Temporary statuses that benefit or hinder a character.
-- Simple text box (free text).
+- Temporary statuses. Free-text textarea.
 
 CHARACTER TYPES:
 - Survivors (Player Characters): strain 3-9, all injury types
 - NPCs/stat blocks: may have fewer injury types; strain range varies
 
 --------------------------------------------------------------------
-EXTENSION ARCHITECTURE (mirrors owl-trackers)
+EXTENSION ARCHITECTURE
 --------------------------------------------------------------------
 Stack: React + TypeScript + Vite + Tailwind CSS + Zustand + MUI
-OBR SDK: @owlbear-rodeo/sdk
+OBR SDK: @owlbear-rodeo/sdk 3.1.0
 
 Entry points (vite.config.ts multi-page):
-  - index.html                              (root)
-  - src/background/background.html          (OBR background script)
-  - src/tokenMenu/tokenMenu.html            (right-click context menu embed)
-  - src/action/action.html                  (action popover)
+  - index.html
+  - src/background/background.html
+  - src/tokenMenu/tokenMenu.html
+  - src/action/action.html
 
 Plugin ID prefix: com.tfe-trackers
 Metadata key for character data: "characterData"
 Metadata key for hidden state:   "hidden"
 
-Data stored per OBR item (in item.metadata):
-  CharacterData object (see characterDataHelpers.ts)
+OBR.contextMenu has no setEmbedHeight — embed height is fixed at
+registration time via embed.height in background.ts (TOKEN_MENU_HEIGHT).
 
 --------------------------------------------------------------------
 DATA MODEL: CharacterData
 --------------------------------------------------------------------
+type CharacterType = "survivor" | "other";
+
 type InjurySlot = {
   id: string;
-  location: string;       // text input
-  complications: string;  // text input
-  treated: boolean;       // checkbox
+  location: string;
+  complications: string;
+  treated: boolean;
 };
 
 type CharacterData = {
-  // Strain
-  strainMax: number;         // 1-9 (configurable per character)
-  strainCurrent: number;     // 0-strainMax (number of checked boxes)
+  characterType: CharacterType;
 
-  // Injuries (Survivors have all; NPCs may have subsets)
+  strainMax: number;         // 1-9
+  strainCurrent: number;     // 0-strainMax
+
   hasSerious: boolean;
+  seriousCount: 1 | 2;      // how many serious slots are visible in Other mode
   hasCritical: boolean;
   hasLethal: boolean;
-  seriousInjuries: [InjurySlot, InjurySlot];  // always 2 slots
+
+  seriousInjuries: [InjurySlot, InjurySlot];
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
 
-  // Conditions
-  conditions: string;        // free text
+  conditions: string;
 };
+
+Defaults:
+  Survivor — strainMax:9, all injuries, seriousCount:2
+  Other    — strainMax:1, hasSerious:true, seriousCount:1, no Critical/Lethal
+
+Migration: migrateCharacterData() fills in characterType and seriousCount
+for tokens saved before these fields existed.
 
 --------------------------------------------------------------------
 DECISIONS MADE
 --------------------------------------------------------------------
-- Default layout for all tokens: Survivor (all injury types enabled,
-  strainMax=9). GMs can toggle injury types per-token in the token
-  context menu.
-- Strain max IS editable in the token menu (small inline text input
-  next to the strain heading), not only in a separate editor.
-- No on-map display of strain/injury status in v0.1. Can be added
-  later following owl-trackers' onMapTrackers pattern.
-- Injury type toggles (S/C/L) are GM-only in the token menu header.
-- Conditions are written on every onChange (fully controlled textarea)
-  rather than on blur only, to avoid data loss.
-
---------------------------------------------------------------------
-UI PANELS
---------------------------------------------------------------------
-Token Menu (context embed, right-click on token):
-  - Strain: checkboxes row (strainCurrent / strainMax) + editable max
-  - Injuries: Serious x2, Critical x1, Lethal x1 (GM can toggle has*)
-  - Conditions: free-text textarea
-  - GM footer: "Open Full Editor" button (popover, future expanded view)
-
-Action Panel (plugin action button):
-  - Scene-open check (shows message if no scene)
-  - GM: explanation of per-token configuration flow
-  - Player: "GM access required" notice
-  - Bug report link placeholder
+- Survivor/Other toggle at top of TokenMenu; stored on the token.
+- Switching type resets layout defaults but preserves existing injury text.
+- Strain boxes are red. Filled boxes show a dark red X (SVG lines).
+- Strain max uses +/- stepper buttons (no text input).
+- Survivor mode: no S/C/L toggles. All injury types always shown.
+- Other mode: +/- buttons for S (0/1/2), C (0/1), L (0/1).
+- InjurySlotCard: CLEAR buttons on Location and Complications (visible
+  only when the field is non-empty).
+- Complications text is faded + struck through when Treated is on.
+- "Open Full Editor" button is hidden when the menu is already open as
+  a popover (detected via ?popover=1 URL param, passed by the button).
+- OBR.contextMenu has no setEmbedHeight — height fixed in background.ts.
+- Logo SVGs added to /public by user.
 
 --------------------------------------------------------------------
 FILE MAP
 --------------------------------------------------------------------
 src/
-  characterDataHelpers.ts     — CharacterData types, factory fns, type guard
-  itemMetadataHelpers.ts      — read/write CharacterData + hidden flag to OBR
-  useCharacterDataStore.ts    — Zustand store for selected token's data
-  useOwlbearStore.ts          — Zustand store for OBR global state
-  useOwlbearStoreSync.ts      — hook: keeps OwlbearStore in sync with OBR events
+  characterDataHelpers.ts     — types, factory fns, type guard, migration
+  itemMetadataHelpers.ts      — read/write CharacterData + hidden flag
+  useCharacterDataStore.ts    — Zustand store; setCharacterType, setSeriousCount
+  useOwlbearStore.ts          — OBR global state store
+  useOwlbearStoreSync.ts      — syncs OwlbearStore to live OBR events
   getPluginId.ts              — namespacing helper
   getTheme.ts                 — MUI theme from OBR theme
   OBRThemeProvider.tsx        — MUI ThemeProvider synced to OBR theme
@@ -121,44 +117,36 @@ src/
   lib/utils.ts                — cn() helper
 
   background/
-    background.html           — entry point (invisible)
-    background.ts             — registers player + GM context menus
+    background.html / background.ts
 
   tokenMenu/
-    tokenMenu.html            — embed HTML (with loading skeleton)
-    main.tsx                  — OBR.onReady → ReactDOM.render
-    App.tsx                   — wires OBR sync + injects write fn
-    TokenMenu.tsx             — main UI: strain, injuries, conditions
+    tokenMenu.html            — embed HTML
+    main.tsx                  — reads ?popover=1, passes isPopover to App
+    App.tsx                   — OBR sync + write fn injection; passes isPopover
+    TokenMenu.tsx             — full UI; Stepper component defined inline
 
   action/
-    action.html               — entry point
-    main.tsx                  — OBR.onReady → ReactDOM.render
-    App.tsx                   — scene-ready gate
-    Action.tsx                — action panel content
+    action.html / main.tsx / App.tsx / Action.tsx
 
   components/
-    PartiallyControlledInput.tsx  — base input with confirm-on-blur logic
-    TextInput.tsx             — single-line text input with animated underline
-    ToggleButton.tsx          — pill toggle switch
-    StrainRow.tsx             — row of strain checkboxes
-    InjurySlotCard.tsx        — injury slot card (location, complications, treated)
+    PartiallyControlledInput.tsx
+    TextInput.tsx
+    ToggleButton.tsx
+    StrainRow.tsx             — red boxes, dark red X when filled
+    InjurySlotCard.tsx        — CLEAR buttons, treated strikethrough
 
 public/
-  manifest.json               — OBR extension manifest
-  tfe-trackers-logo.svg       — TODO: add logo
-  tfe-trackers-logo-outline.svg — TODO: add outline logo (used in context menu)
+  manifest.json
+  tfe-trackers-logo.svg
+  tfe-trackers-logo-outline.svg
 
 --------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
-- Add logo SVGs to /public (tfe-trackers-logo.svg + outline variant)
-- Run: pnpm install && pnpm dev to test locally
-- OBR.contextMenu.setEmbedHeight may not be available in all SDK
-  versions — verify against @owlbear-rodeo/sdk 3.1.0 API; fall back
-  to a fixed height in manifest/background.ts if needed.
-- "Open Full Editor" button in TokenMenu footer currently opens
-  tokenMenu.html as a popover — wire to a dedicated editor page later.
-- On-map status bars (strain/injury) can be added following the
-  owl-trackers onMapTrackers + background pattern.
-- Consider adding a "Reset token data" button for GMs.
-- GitHub URL in Action.tsx is a placeholder — update when repo is public.
+- Tune TOKEN_MENU_HEIGHT in background.ts once UI is fully laid out.
+- "Open Full Editor" popover is just a taller version of tokenMenu.html —
+  wire to a dedicated editor page later if more GM controls are needed.
+- On-map status display (strain/injury) not implemented in v0.1.
+- Consider "Reset token data" button for GMs.
+- GitHub URL in Action.tsx is a placeholder.
+- Appearance pass still pending (user noted notes to share).

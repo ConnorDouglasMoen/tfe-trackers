@@ -15,7 +15,6 @@ export default {
         "2xs": "0.6rem",
       },
       colors: {
-        // OBR-matched surface colors for light/dark theme
         default: {
           DEFAULT: "#dde1ee",
           dark: "#222639",
@@ -38,25 +37,26 @@ export default {
             dark: "rgb(255, 255, 255, 0.5)",
           },
         },
-        // TFE injury severity accent colors
         injury: {
           serious: {
-            DEFAULT: "rgb(214, 142, 104)",   // orange — serious injury
+            DEFAULT: "rgb(214, 142, 104)",
             dark: "rgb(164, 79, 39)",
           },
           critical: {
-            DEFAULT: "rgb(219, 119, 119)",   // red — critical injury
+            DEFAULT: "rgb(219, 119, 119)",
             dark: "rgb(148, 39, 44)",
           },
           lethal: {
-            DEFAULT: "rgb(124, 66, 145)",    // purple — lethal injury
+            DEFAULT: "rgb(124, 66, 145)",
             dark: "rgb(80, 30, 100)",
           },
         },
-        // Strain accent color
+        // Hex values so Tailwind opacity modifiers (e.g. border-strain/40) work correctly.
         strain: {
-          DEFAULT: "rgb(154, 177, 211)",     // blue — strain checkboxes
-          dark: "rgb(61, 84, 131)",
+          DEFAULT: "#d25050",   // empty box border + hover
+          checked: "#b42828",   // checked box fill (light)
+          checkedDark: "#781818", // checked box fill (dark)
+          dark: "#a02828",      // empty box border in dark mode
         },
       },
     },

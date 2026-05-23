@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "manifest_version": 1,
   "author": "cdm",
-  "homepage_url": "",
-  "icon": "/tfe-trackers-logo.svg",
+  "homepage_url": "https://github.com/ConnorDouglasMoen/tfe-trackers",
+  "icon": "/tales-from-elsewhere-logo.svg",
   "background_url": "/src/background/background.html",
   "description": "Strain, Injury, and Condition tracker for Tales from Elsewhere",
   "action": {
     "title": "TFE Trackers",
-    "icon": "/tfe-trackers-logo-outline.svg",
+    "icon": "/tfe-cowboy.svg",
     "popover": "/src/action/action.html",
     "height": 200,
     "width": 300
