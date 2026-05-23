@@ -14,13 +14,25 @@ export type InjurySlot = {
  * Character type determines the default layout:
  *   "survivor" — full Survivor layout (strainMax 3-9, all injury types)
  *   "other"    — minimal layout (strainMax 1, only Serious by default)
- *                with +/- controls for each injury tier
  */
 export type CharacterType = "survivor" | "other";
+
+/**
+ * Controls what is shown on the map above the token.
+ *   showStrain       — render the strain checkbox row
+ *   showConditions   — render condition text bubbles
+ *   injuryDisplay    — "all" shows every enabled slot; "filled-only" hides empty slots
+ */
+export type DisplaySettings = {
+  showStrain: boolean;
+  showConditions: boolean;
+  injuryDisplay: "all" | "filled-only";
+};
 
 /** Full character data stored in OBR item metadata. */
 export type CharacterData = {
   characterType: CharacterType;
+  displaySettings: DisplaySettings;
 
   // --- Strain ---
   strainMax: number;
@@ -37,7 +49,7 @@ export type CharacterData = {
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
 
-  // --- Conditions: stored as an array of strings, one per condition ---
+  // --- Conditions ---
   conditions: string[];
 };
 
@@ -51,11 +63,16 @@ export const HIDDEN_METADATA_ID = "hidden";
 export const STRAIN_MIN = 1;
 export const STRAIN_MAX = 9;
 
+export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+  showStrain: true,
+  showConditions: true,
+  injuryDisplay: "all",
+};
+
 /////////////////////////////////////////////////////////////////////
 // Factory helpers
 /////////////////////////////////////////////////////////////////////
 
-/** Create a blank InjurySlot with a unique ID. */
 export function createInjurySlot(): InjurySlot {
   return {
     id: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -69,6 +86,7 @@ export function createInjurySlot(): InjurySlot {
 export function createDefaultCharacterData(): CharacterData {
   return {
     characterType: "survivor",
+    displaySettings: { ...DEFAULT_DISPLAY_SETTINGS },
     strainMax: 3,
     strainCurrent: 0,
     hasSerious: true,
@@ -86,6 +104,7 @@ export function createDefaultCharacterData(): CharacterData {
 export function createOtherCharacterData(): CharacterData {
   return {
     characterType: "other",
+    displaySettings: { ...DEFAULT_DISPLAY_SETTINGS },
     strainMax: 1,
     strainCurrent: 0,
     hasSerious: true,
@@ -100,7 +119,7 @@ export function createOtherCharacterData(): CharacterData {
 }
 
 /////////////////////////////////////////////////////////////////////
-// Type guard
+// Type guard + migration
 /////////////////////////////////////////////////////////////////////
 
 function isInjurySlot(v: unknown): v is InjurySlot {
@@ -113,7 +132,6 @@ function isInjurySlot(v: unknown): v is InjurySlot {
   );
 }
 
-/** Runtime validation of a CharacterData object read from OBR metadata. */
 export function isCharacterData(v: unknown): v is CharacterData {
   const d = v as CharacterData;
   if (typeof d?.strainMax !== "number") return false;
@@ -125,23 +143,24 @@ export function isCharacterData(v: unknown): v is CharacterData {
   if (!d.seriousInjuries.every(isInjurySlot)) return false;
   if (!isInjurySlot(d?.criticalInjury)) return false;
   if (!isInjurySlot(d?.lethalInjury)) return false;
-  // conditions may be a legacy string or a new string[] — both pass here;
-  // migrateCharacterData normalises it to string[].
   if (d?.conditions === undefined) return false;
   return true;
 }
 
-/** Migrate older CharacterData that may be missing newer fields. */
+/** Fill in any fields added after initial save. */
 export function migrateCharacterData(d: CharacterData): CharacterData {
   return {
     ...d,
     characterType: d.characterType ?? "survivor",
     seriousCount: d.seriousCount ?? 2,
-    // Migrate legacy plain-string conditions to string[]
+    displaySettings: {
+      ...DEFAULT_DISPLAY_SETTINGS,
+      ...(d.displaySettings ?? {}),
+    },
     conditions: Array.isArray(d.conditions)
       ? d.conditions
-      : typeof d.conditions === "string" && d.conditions.length > 0
-        ? [d.conditions]
+      : typeof d.conditions === "string" && (d.conditions as string).length > 0
+        ? [d.conditions as string]
         : [],
   };
 }

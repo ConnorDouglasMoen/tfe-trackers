@@ -10,23 +10,23 @@ SYSTEM: Tales from Elsewhere (TFE)
 --------------------------------------------------------------------
 
 HP SYSTEM: Strain + Injuries
-- Strain: integer 1-9. Survivors (Player Characters) have 3-9 strain.
-  Represented as checkboxes (filled = used/taken, shown as dark red X).
+- Strain: integer 1-9. Survivors have strain 3-9 by default.
+  Represented as checkboxes (filled = taken, shown as dark red X).
 - Injuries: up to 3 types per character (Survivors have all 3):
     * Serious Injuries: up to 2 slots
     * Critical Injury:  1 slot
     * Lethal Injury:    1 slot
-  Not all stat blocks have all injury types. Each injury slot has:
+  Each injury slot has:
     - Location (text + CLEAR button)
     - Complications (text + CLEAR button; faded + strikethrough when Treated)
-    - Treated checkbox (ToggleButton)
+    - Treated toggle
 
 CONDITIONS:
-- Temporary statuses. Free-text textarea.
+- Temporary statuses. Stored as string[]. Enter to add, X to delete.
 
 CHARACTER TYPES:
 - Survivors (Player Characters): strain 3-9, all injury types
-- NPCs/stat blocks: may have fewer injury types; strain range varies
+- Other (NPCs): minimal defaults, +/- controls to add injury tiers
 
 --------------------------------------------------------------------
 EXTENSION ARCHITECTURE
@@ -44,13 +44,18 @@ Plugin ID prefix: com.tfe-trackers
 Metadata key for character data: "characterData"
 Metadata key for hidden state:   "hidden"
 
-OBR.contextMenu has no setEmbedHeight — embed height is fixed at
-registration time via embed.height in background.ts (TOKEN_MENU_HEIGHT).
+OBR.contextMenu has no setEmbedHeight — height fixed in background.ts.
 
 --------------------------------------------------------------------
 DATA MODEL: CharacterData
 --------------------------------------------------------------------
 type CharacterType = "survivor" | "other";
+
+type DisplaySettings = {
+  showStrain: boolean;       // show strain row on map
+  showConditions: boolean;   // show condition bubbles on map
+  injuryDisplay: "all" | "filled-only";  // injury circle visibility
+};
 
 type InjurySlot = {
   id: string;
@@ -61,12 +66,13 @@ type InjurySlot = {
 
 type CharacterData = {
   characterType: CharacterType;
+  displaySettings: DisplaySettings;
 
   strainMax: number;         // 1-9
   strainCurrent: number;     // 0-strainMax
 
   hasSerious: boolean;
-  seriousCount: 1 | 2;      // how many serious slots are visible in Other mode
+  seriousCount: 1 | 2;
   hasCritical: boolean;
   hasLethal: boolean;
 
@@ -74,32 +80,65 @@ type CharacterData = {
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
 
-  conditions: string;
+  conditions: string[];
 };
 
 Defaults:
-  Survivor — strainMax:9, all injuries, seriousCount:2
-  Other    — strainMax:1, hasSerious:true, seriousCount:1, no Critical/Lethal
+  Survivor — strainMax:3, all injuries, seriousCount:2
+  Other    — strainMax:1, hasSerious:true, seriousCount:1
 
-Migration: migrateCharacterData() fills in characterType and seriousCount
-for tokens saved before these fields existed.
+Migration (migrateCharacterData):
+  - characterType defaults to "survivor"
+  - seriousCount defaults to 2
+  - displaySettings merged with DEFAULT_DISPLAY_SETTINGS
+  - conditions: legacy string converted to string[]
+
+--------------------------------------------------------------------
+ON-MAP DISPLAY
+--------------------------------------------------------------------
+Implemented in src/background/:
+  onMapDisplay.ts   — init, refresh, incremental update loop
+  onMapHelpers.ts   — builds OBR local items (shapes + text)
+  onMapItemIds.ts   — deterministic ID generators for all attachments
+
+Layout (rendered below token, left-aligned):
+  Row 1: Strain boxes (14px squares, red fill + dark red X when filled)
+  Row 2: Injury circles (18px, color-coded by severity)
+           ○ = empty slot (shown only when injuryDisplay = "all")
+           ! = filled + untreated
+           ✓ = filled + treated
+  Row 3: Condition text bubbles (pill-shaped, wrap to next line)
+
+Injury circle colors:
+  Serious  — fill #d68e68, stroke #a44f27
+  Critical — fill #db7777, stroke #94272c
+  Lethal   — fill #7c4291, stroke #501e64
+
+DisplaySettings toggled per-token in the token menu (On-Map Display section):
+  Show Strain       — toggle
+  Show Conditions   — toggle
+  Injuries          — "All" / "Filled Only" segmented control
+
+OBR attachment strategy:
+  - All items added to OBR.scene.local (not persistent scene items)
+  - Attachments use disableAttachmentBehavior for ROTATION, VISIBLE, COPY, SCALE
+  - Change detection mirrors owl-trackers: only changed items are redrawn
+  - Batch add in chunks of 100 to avoid rate limits
+
+NOTE: onMapDisplay.ts currently passes a hardcoded DPI of 150 to
+onMapHelpers. This should be replaced with OBR.scene.grid.getDpi()
+for correctness on non-standard grid sizes.
 
 --------------------------------------------------------------------
 DECISIONS MADE
 --------------------------------------------------------------------
-- Survivor/Other toggle at top of TokenMenu; stored on the token.
-- Switching type resets layout defaults but preserves existing injury text.
-- Strain boxes are red. Filled boxes show a dark red X (SVG lines).
-- Strain max uses +/- stepper buttons (no text input).
-- Survivor mode: no S/C/L toggles. All injury types always shown.
-- Other mode: +/- buttons for S (0/1/2), C (0/1), L (0/1).
-- InjurySlotCard: CLEAR buttons on Location and Complications (visible
-  only when the field is non-empty).
-- Complications text is faded + struck through when Treated is on.
-- "Open Full Editor" button is hidden when the menu is already open as
-  a popover (detected via ?popover=1 URL param, passed by the button).
-- OBR.contextMenu has no setEmbedHeight — height fixed in background.ts.
-- Logo SVGs added to /public by user.
+- Survivor/Other toggle stored on token; switching preserves injury text.
+- Strain boxes use inline styles (not Tailwind) to avoid purge issues.
+- Strain default for Survivor: 3 (not 9).
+- On-map items are OBR local items (lost on refresh/reconnect — this
+  is the same approach as owl-trackers and is intentional).
+- "Open Full Editor" button hidden when isPopover=true (?popover=1 URL param).
+- Conditions stored as string[]; migrateCharacterData handles legacy strings.
 
 --------------------------------------------------------------------
 FILE MAP
@@ -107,23 +146,28 @@ FILE MAP
 src/
   characterDataHelpers.ts     — types, factory fns, type guard, migration
   itemMetadataHelpers.ts      — read/write CharacterData + hidden flag
-  useCharacterDataStore.ts    — Zustand store; setCharacterType, setSeriousCount
+  useCharacterDataStore.ts    — Zustand store; all actions incl. setDisplaySettings
   useOwlbearStore.ts          — OBR global state store
   useOwlbearStoreSync.ts      — syncs OwlbearStore to live OBR events
-  getPluginId.ts              — namespacing helper
-  getTheme.ts                 — MUI theme from OBR theme
-  OBRThemeProvider.tsx        — MUI ThemeProvider synced to OBR theme
-  index.css                   — Tailwind directives + scrollbar styles
-  lib/utils.ts                — cn() helper
+  getPluginId.ts
+  getTheme.ts
+  OBRThemeProvider.tsx
+  index.css
+  lib/utils.ts
 
   background/
-    background.html / background.ts
+    background.html
+    background.ts             — registers context menus; calls initOnMapDisplay()
+    mathHelpers.ts            — getImageCenter, createRoundedRectangle (from owl-trackers)
+    onMapDisplay.ts           — init, refresh loop, change detection
+    onMapHelpers.ts           — buildStrainItems, buildInjuryItems, buildConditionItems
+    onMapItemIds.ts           — ID generators + getAllAttachmentIds
 
   tokenMenu/
-    tokenMenu.html            — embed HTML
-    main.tsx                  — reads ?popover=1, passes isPopover to App
-    App.tsx                   — OBR sync + write fn injection; passes isPopover
-    TokenMenu.tsx             — full UI; Stepper component defined inline
+    tokenMenu.html
+    main.tsx                  — reads ?popover=1
+    App.tsx
+    TokenMenu.tsx             — Stepper, ConditionsSection, DisplaySettingsSection
 
   action/
     action.html / main.tsx / App.tsx / Action.tsx
@@ -132,7 +176,7 @@ src/
     PartiallyControlledInput.tsx
     TextInput.tsx
     ToggleButton.tsx
-    StrainRow.tsx             — red boxes, dark red X when filled
+    StrainRow.tsx             — inline styles for red boxes + X
     InjurySlotCard.tsx        — CLEAR buttons, treated strikethrough
 
 public/
@@ -143,10 +187,10 @@ public/
 --------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
-- Tune TOKEN_MENU_HEIGHT in background.ts once UI is fully laid out.
-- "Open Full Editor" popover is just a taller version of tokenMenu.html —
-  wire to a dedicated editor page later if more GM controls are needed.
-- On-map status display (strain/injury) not implemented in v0.1.
-- Consider "Reset token data" button for GMs.
+- Replace hardcoded DPI=150 in onMapDisplay.ts with OBR.scene.grid.getDpi()
+- Tune TOKEN_MENU_HEIGHT in background.ts once UI is confirmed in OBR.
+- "Open Full Editor" popover — consider a dedicated editor page for GM
+  controls (hidden flag, bulk reset, etc.)
+- Consider adding a "Reset token data" GM button.
 - GitHub URL in Action.tsx is a placeholder.
 - Appearance pass still pending (user noted notes to share).

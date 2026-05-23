@@ -2,6 +2,7 @@ import { create } from "zustand";
 import {
   CharacterData,
   CharacterType,
+  DisplaySettings,
   InjurySlot,
   createDefaultCharacterData,
   createOtherCharacterData,
@@ -16,14 +17,9 @@ interface CharacterDataState {
   setData: (data: CharacterData) => void;
   setWriteToItem: (fn: (data: CharacterData) => Promise<void>) => void;
 
-  // --- Character type ---
   setCharacterType: (type: CharacterType) => void;
-
-  // --- Strain ---
   setStrainCurrent: (current: number) => void;
   setStrainMax: (max: number) => void;
-
-  // --- Injuries ---
   updateSeriousInjury: (index: 0 | 1, patch: Partial<InjurySlot>) => void;
   updateCriticalInjury: (patch: Partial<InjurySlot>) => void;
   updateLethalInjury: (patch: Partial<InjurySlot>) => void;
@@ -31,10 +27,11 @@ interface CharacterDataState {
   setSeriousCount: (count: 1 | 2) => void;
   setHasCritical: (val: boolean) => void;
   setHasLethal: (val: boolean) => void;
-
-  // --- Conditions (array) ---
   addCondition: (text: string) => void;
   removeCondition: (index: number) => void;
+
+  /** Merge a partial DisplaySettings patch and persist. */
+  setDisplaySettings: (patch: Partial<DisplaySettings>) => void;
 }
 
 export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
@@ -44,13 +41,13 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
   setData: (data) => set({ data }),
   setWriteToItem: (writeToItem) => set({ writeToItem }),
 
-  /** Switching type resets layout defaults but preserves injury text and conditions. */
   setCharacterType: (type) =>
     set((state) => {
       const template =
         type === "survivor" ? createDefaultCharacterData() : createOtherCharacterData();
       const merged: CharacterData = {
         ...template,
+        displaySettings: state.data.displaySettings,
         seriousInjuries: state.data.seriousInjuries,
         criticalInjury: state.data.criticalInjury,
         lethalInjury: state.data.lethalInjury,
@@ -94,7 +91,6 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
   setHasCritical: (hasCritical) => set((state) => mutate(state, { hasCritical })),
   setHasLethal: (hasLethal) => set((state) => mutate(state, { hasLethal })),
 
-  /** Append a new condition string to the list. */
   addCondition: (text) =>
     set((state) => {
       const trimmed = text.trim();
@@ -102,12 +98,18 @@ export const useCharacterDataStore = create<CharacterDataState>()((set) => ({
       return mutate(state, { conditions: [...state.data.conditions, trimmed] });
     }),
 
-  /** Remove the condition at the given index. */
   removeCondition: (index) =>
     set((state) => {
       const updated = state.data.conditions.filter((_, i) => i !== index);
       return mutate(state, { conditions: updated });
     }),
+
+  setDisplaySettings: (patch) =>
+    set((state) =>
+      mutate(state, {
+        displaySettings: { ...state.data.displaySettings, ...patch },
+      }),
+    ),
 }));
 
 function mutate(
