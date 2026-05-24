@@ -8,17 +8,12 @@ import { STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
 import StrainRow from "../components/StrainRow";
 import InjurySlotCard from "../components/InjurySlotCard";
 
-/** Small +/- stepper used for strain max and Other-mode injury tier counts. */
+/** Small +/- stepper. */
 function Stepper({
-  onDecrement,
-  onIncrement,
-  disableDecrement,
-  disableIncrement,
+  onDecrement, onIncrement, disableDecrement, disableIncrement,
 }: {
-  onDecrement: () => void;
-  onIncrement: () => void;
-  disableDecrement: boolean;
-  disableIncrement: boolean;
+  onDecrement: () => void; onIncrement: () => void;
+  disableDecrement: boolean; disableIncrement: boolean;
 }): React.JSX.Element {
   const base = "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
   const active = "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
@@ -39,19 +34,14 @@ function ConditionsSection(): React.JSX.Element {
   const [inputValue, setInputValue] = useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addCondition(inputValue);
-      setInputValue("");
-    }
+    if (e.key === "Enter") { e.preventDefault(); addCondition(inputValue); setInputValue(""); }
   };
 
   return (
     <section>
       <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Conditions</h2>
       <input
-        type="text"
-        value={inputValue}
+        type="text" value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Add condition, press Enter…"
@@ -76,66 +66,10 @@ function ConditionsSection(): React.JSX.Element {
   );
 }
 
-/** On-Map Display settings toggles. */
-function DisplaySettingsSection(): React.JSX.Element {
-  const ds = useCharacterDataStore((state) => state.data.displaySettings);
-  const setDisplaySettings = useCharacterDataStore((state) => state.setDisplaySettings);
-
-  const rowClass = "flex items-center justify-between text-sm text-text-primary dark:text-text-primary-dark";
-  const toggleClass = (on: boolean) =>
-    `relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition duration-150 ${on ? "bg-[#74649f]" : "bg-black/20 dark:bg-white/20"}`;
-  const thumbClass = (on: boolean) =>
-    `inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-150 ${on ? "translate-x-5" : "translate-x-1"}`;
-  const Toggle = ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
-    <button role="switch" aria-checked={checked} onClick={onChange} className={toggleClass(checked)}>
-      <span className={thumbClass(checked)} />
-    </button>
-  );
-
-  return (
-    <section>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">On-Map Display</h2>
-      <div className="flex flex-col gap-2">
-        <div className={rowClass}>
-          <span>Show Strain</span>
-          <Toggle checked={ds.showStrain} onChange={() => setDisplaySettings({ showStrain: !ds.showStrain })} />
-        </div>
-        <div className={rowClass}>
-          <span>Show Conditions</span>
-          <Toggle checked={ds.showConditions} onChange={() => setDisplaySettings({ showConditions: !ds.showConditions })} />
-        </div>
-        <div className={rowClass}>
-          <span>Injuries</span>
-          <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
-            {(["all", "filled-only"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setDisplaySettings({ injuryDisplay: mode })}
-                className={`rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150 ${
-                  ds.injuryDisplay === mode
-                    ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                    : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-                }`}
-              >
-                {mode === "all" ? "All" : "Filled Only"}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/**
- * The main token context-menu panel.
- * isPopover: when true (opened via "Open Full Editor"), hides the footer button.
- */
 export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
   const role = useOwlbearStore((state) => state.role);
 
-  // data is the active CharacterData blob derived from the record
   const data = useCharacterDataStore((state) => state.data);
   const setRecord = useCharacterDataStore((state) => state.setRecord);
   const setCharacterType = useCharacterDataStore((state) => state.setCharacterType);
@@ -255,10 +189,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
 
         {/* ── Conditions ─────────────────────────────────────────── */}
         <ConditionsSection />
-
-        {/* ── On-Map Display settings ────────────────────────────── */}
-        <hr className="border-white/10" />
-        <DisplaySettingsSection />
 
         {/* ── Footer — hidden when already inside the popover ────── */}
         {role === "GM" && !isPopover && (

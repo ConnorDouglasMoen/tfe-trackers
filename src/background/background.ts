@@ -10,18 +10,25 @@ const menuIcon = new URL(
 
 const contextMenuLabel = "TFE Trackers";
 
-// Fixed embed height. OBR.contextMenu has no setEmbedHeight method —
-// height is set only at registration time.
-const TOKEN_MENU_HEIGHT = 420;
+/**
+ * Embed heights (pixels).
+ * Players see: type toggle, strain, injuries, conditions.
+ * GMs see all of the above plus On-Map Display settings.
+ * These values should be tuned once the UI is confirmed in OBR.
+ */
+const PLAYER_MENU_HEIGHT = 420;
+const GM_MENU_HEIGHT = 560;
 
 OBR.onReady(async () => {
   fetch("/manifest.json")
     .then((r) => r.json())
     .then((json) =>
-      console.log(`${json["name"] as string} - version: ${json["version"] as string}`),
+      console.log(
+        `${json["name"] as string} - version: ${json["version"] as string}`,
+      ),
     );
 
-  // Player context menu — hidden when trackers are marked hidden by GM
+  // Player context menu — hidden when trackers are marked hidden by GM.
   OBR.contextMenu.create({
     id: getPluginId("player-menu"),
     icons: [
@@ -47,11 +54,11 @@ OBR.onReady(async () => {
     ],
     embed: {
       url: "/src/tokenMenu/tokenMenu.html",
-      height: TOKEN_MENU_HEIGHT,
+      height: PLAYER_MENU_HEIGHT,
     },
   });
 
-  // GM context menu — always visible regardless of hidden flag
+  // GM context menu — always visible; taller to accommodate display settings.
   OBR.contextMenu.create({
     id: getPluginId("gm-menu"),
     icons: [
@@ -71,10 +78,10 @@ OBR.onReady(async () => {
     ],
     embed: {
       url: "/src/tokenMenu/tokenMenu.html",
-      height: TOKEN_MENU_HEIGHT,
+      height: GM_MENU_HEIGHT,
     },
   });
 
-  // Start the on-map display system
+  // Start the on-map display system.
   initOnMapDisplay();
 });

@@ -1,28 +1,63 @@
-import OBR, { Image, Item, isImage } from "@owlbear-rodeo/sdk";
+import OBR, { Image, Item, Metadata, isImage } from "@owlbear-rodeo/sdk";
 import { getPluginId } from "../getPluginId";
-import { TOKEN_RECORD_METADATA_ID } from "../characterDataHelpers";
+import {
+  TOKEN_RECORD_METADATA_ID,
+  DisplaySettings,
+  DEFAULT_DISPLAY_SETTINGS,
+} from "../characterDataHelpers";
+import { SCENE_DISPLAY_METADATA_ID } from "../useSceneDisplayStore";
 import { getActiveDataFromItem } from "../itemMetadataHelpers";
 import { getAllAttachmentIds } from "./onMapItemIds";
 import { buildStrainItems, buildInjuryItems, buildConditionItems } from "./onMapHelpers";
 
-// Row heights — must match constants in onMapHelpers.ts
-const STRAIN_ROW_HEIGHT = 14;  // BOX_SIZE
-const INJURY_ROW_HEIGHT = 18;  // CIRCLE_SIZE
+const STRAIN_ROW_HEIGHT = 14;
+const INJURY_ROW_HEIGHT = 18;
 
 let itemsLast: Image[] = [];
 const addItemsArray: Item[] = [];
 const deleteItemsArray: string[] = [];
 let sceneListenersSet = false;
 
+/** Scene-level display settings — updated via OBR.scene.onMetadataChange. */
+let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
+
+/**
+ * Live scene DPI — fetched once per scene ready and cached.
+ * Passed to all builder helpers so on-map geometry scales correctly
+ * regardless of the campaign's grid DPI setting.
+ */
+let sceneDpi = 150;
+
+function readDisplaySettings(meta: Metadata): DisplaySettings {
+  const raw = meta[getPluginId(SCENE_DISPLAY_METADATA_ID)];
+  if (raw !== null && typeof raw === "object") {
+    return { ...DEFAULT_DISPLAY_SETTINGS, ...(raw as Partial<DisplaySettings>) };
+  }
+  return { ...DEFAULT_DISPLAY_SETTINGS };
+}
+
 export async function initOnMapDisplay() {
+  const meta = await OBR.scene.getMetadata();
+  displaySettings = readDisplaySettings(meta);
+
+  // Re-draw all tokens whenever the GM changes a display setting.
+  OBR.scene.onMetadataChange((meta) => {
+    displaySettings = readDisplaySettings(meta);
+    void refreshAll();
+  });
+
   OBR.scene.onReadyChange(async (isReady) => {
     if (isReady) { await refreshAll(); startListeners(); }
   });
+
   const isReady = await OBR.scene.isReady();
   if (isReady) { await refreshAll(); startListeners(); }
 }
 
 async function refreshAll() {
+  // Fetch current DPI each time the scene becomes ready (DPI can differ per scene).
+  sceneDpi = await OBR.scene.grid.getDpi();
+
   const items: Image[] = await OBR.scene.items.getItems(
     (item) => (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
   );
@@ -40,7 +75,8 @@ function startListeners() {
 
   const unsubItems = OBR.scene.items.onChange(async (allItems) => {
     const images: Image[] = allItems.filter(
-      (item): item is Image => (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
+      (item): item is Image =>
+        (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
     );
     const changed = getChangedItems(images);
     itemsLast = images;
@@ -57,32 +93,45 @@ function startListeners() {
 }
 
 function updateItem(image: Image) {
-  // If no TokenRecord stored yet, clear any stale attachments and bail.
   const raw = image.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)];
   if (raw === undefined) {
     deleteItemsArray.push(...getAllAttachmentIds(image.id));
     return;
   }
 
-  // getActiveDataFromItem handles migration and returns the active CharacterData blob.
   const data = getActiveDataFromItem(image);
-  const { showStrain, showConditions } = data.displaySettings;
+  const { showStrain, showConditions } = displaySettings;
 
   if (showStrain) {
-    buildStrainItems(image, 150, data, addItemsArray, deleteItemsArray);
+    buildStrainItems(image, sceneDpi, data, addItemsArray, deleteItemsArray);
   } else {
     for (let i = 0; i < 9; i++) {
-      deleteItemsArray.push(`${image.id}-tfe-strain-bg-${i}`, `${image.id}-tfe-strain-x-${i}`);
+      deleteItemsArray.push(
+        `${image.id}-tfe-strain-bg-${i}`,
+        `${image.id}-tfe-strain-x-${i}`,
+      );
     }
   }
 
-  buildInjuryItems(image, 150, data, showStrain ? STRAIN_ROW_HEIGHT : 0, addItemsArray, deleteItemsArray);
+  buildInjuryItems(
+    image, sceneDpi, data, displaySettings,
+    showStrain ? STRAIN_ROW_HEIGHT : 0,
+    addItemsArray, deleteItemsArray,
+  );
 
   if (showConditions && data.conditions.length > 0) {
-    buildConditionItems(image, 150, data, showStrain ? STRAIN_ROW_HEIGHT : 0, INJURY_ROW_HEIGHT, addItemsArray, deleteItemsArray);
+    buildConditionItems(
+      image, sceneDpi, data,
+      showStrain ? STRAIN_ROW_HEIGHT : 0,
+      INJURY_ROW_HEIGHT,
+      addItemsArray, deleteItemsArray,
+    );
   } else {
     for (let i = 0; i < 20; i++) {
-      deleteItemsArray.push(`${image.id}-tfe-cond-bg-${i}`, `${image.id}-tfe-cond-text-${i}`);
+      deleteItemsArray.push(
+        `${image.id}-tfe-cond-bg-${i}`,
+        `${image.id}-tfe-cond-text-${i}`,
+      );
     }
   }
 }
@@ -113,6 +162,8 @@ function getChangedItems(current: Image[]): Image[] {
 const BATCH_SIZE = 100;
 async function batchAddToScene(items: Item[]) {
   for (let i = 0; i < Math.ceil(items.length / BATCH_SIZE); i++) {
-    await OBR.scene.local.addItems(items.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE));
+    await OBR.scene.local.addItems(
+      items.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE),
+    );
   }
 }

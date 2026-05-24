@@ -10,7 +10,7 @@ SYSTEM: Tales from Elsewhere (TFE)
 --------------------------------------------------------------------
 
 HP SYSTEM: Strain + Injuries
-- Strain: integer 1-9. Survivors have strain 3-9 by default.
+- Strain: integer 1-9. Survivors have strain 3 by default (max 9).
   Represented as checkboxes (filled = taken, shown as dark red X).
 - Injuries: up to 3 types per character (Survivors have all 3):
     * Serious Injuries: up to 2 slots
@@ -25,8 +25,9 @@ CONDITIONS:
 - Temporary statuses. Stored as string[]. Enter to add, X to delete.
 
 CHARACTER TYPES:
-- Survivors (Player Characters): strain 3-9, all injury types
+- Survivors (Player Characters): strain 3, all injury types
 - Other (NPCs): minimal defaults, +/- controls to add injury tiers
+- Switching type preserves each blob independently (no data bleed)
 
 --------------------------------------------------------------------
 EXTENSION ARCHITECTURE
@@ -41,21 +42,22 @@ Entry points (vite.config.ts multi-page):
   - src/action/action.html
 
 Plugin ID prefix: com.tfe-trackers
-Metadata key for character data: "characterData"
-Metadata key for hidden state:   "hidden"
+Token metadata key:  "tokenRecord"
+Hidden metadata key: "hidden"
+Scene metadata key:  "sceneDisplaySettings"
 
-OBR.contextMenu has no setEmbedHeight — height fixed in background.ts.
+OBR.contextMenu has no setEmbedHeight — height fixed at registration.
+  Player embed: PLAYER_MENU_HEIGHT = 420px
+  GM embed:     GM_MENU_HEIGHT     = 560px (includes On-Map Display section)
+  Both values in background.ts — tune as needed.
 
 --------------------------------------------------------------------
-DATA MODEL: CharacterData
+DATA MODEL
 --------------------------------------------------------------------
+
+--- Token metadata: TokenRecord ---
+
 type CharacterType = "survivor" | "other";
-
-type DisplaySettings = {
-  showStrain: boolean;       // show strain row on map
-  showConditions: boolean;   // show condition bubbles on map
-  injuryDisplay: "all" | "filled-only";  // injury circle visibility
-};
 
 type InjurySlot = {
   id: string;
@@ -66,118 +68,123 @@ type InjurySlot = {
 
 type CharacterData = {
   characterType: CharacterType;
-  displaySettings: DisplaySettings;
-
   strainMax: number;         // 1-9
   strainCurrent: number;     // 0-strainMax
-
   hasSerious: boolean;
   seriousCount: 1 | 2;
   hasCritical: boolean;
   hasLethal: boolean;
-
   seriousInjuries: [InjurySlot, InjurySlot];
   criticalInjury: InjurySlot;
   lethalInjury: InjurySlot;
-
   conditions: string[];
+};
+
+type TokenRecord = {
+  activeType: CharacterType;
+  survivor: CharacterData;   // always preserved, even when "other" is active
+  other: CharacterData;      // always preserved, even when "survivor" is active
 };
 
 Defaults:
   Survivor — strainMax:3, all injuries, seriousCount:2
   Other    — strainMax:1, hasSerious:true, seriousCount:1
 
-Migration (migrateCharacterData):
-  - characterType defaults to "survivor"
-  - seriousCount defaults to 2
-  - displaySettings merged with DEFAULT_DISPLAY_SETTINGS
-  - conditions: legacy string converted to string[]
+Migration (migrateToTokenRecord):
+  - Handles legacy CharacterData blobs (pre-TokenRecord)
+  - Fills in characterType, seriousCount
+  - Strips legacy displaySettings (now in scene metadata)
+
+--- Scene metadata: DisplaySettings ---
+
+type DisplaySettings = {
+  showStrain: boolean;         // show strain row on map
+  showConditions: boolean;     // show condition bubbles on map
+  injuryDisplay: "all" | "filled-only";
+};
+
+Stored at: OBR.scene.metadata[getPluginId("sceneDisplaySettings")]
+Written by: GM only (DisplaySettingsSection in token menu)
+Read by: all participants via OBR.scene.onMetadataChange
+Defaults: showStrain:true, showConditions:true, injuryDisplay:"all"
 
 --------------------------------------------------------------------
 ON-MAP DISPLAY
 --------------------------------------------------------------------
 Implemented in src/background/:
-  onMapDisplay.ts   — init, refresh, incremental update loop
-  onMapHelpers.ts   — builds OBR local items (shapes + text)
-  onMapItemIds.ts   — deterministic ID generators for all attachments
+  onMapDisplay.ts   — init; fetches DPI via OBR.scene.grid.getDpi();
+                      reads DisplaySettings from scene metadata;
+                      full redraw on metadata change
+  onMapHelpers.ts   — buildStrainItems, buildInjuryItems (takes
+                      DisplaySettings arg), buildConditionItems
+  onMapItemIds.ts   — deterministic ID generators + getAllAttachmentIds
+  mathHelpers.ts    — getImageCenter (copied from owl-trackers)
 
 Layout (rendered below token, left-aligned):
-  Row 1: Strain boxes (14px squares, red fill + dark red X when filled)
+  Row 1: Strain boxes (14px squares, red; dark red X when filled)
   Row 2: Injury circles (18px, color-coded by severity)
            ○ = empty slot (shown only when injuryDisplay = "all")
            ! = filled + untreated
            ✓ = filled + treated
-  Row 3: Condition text bubbles (pill-shaped, wrap to next line)
+  Row 3: Condition text bubbles (pill-shaped, wrap to fit token width)
 
 Injury circle colors:
   Serious  — fill #d68e68, stroke #a44f27
   Critical — fill #db7777, stroke #94272c
   Lethal   — fill #7c4291, stroke #501e64
 
-DisplaySettings toggled per-token in the token menu (On-Map Display section):
-  Show Strain       — toggle
-  Show Conditions   — toggle
-  Injuries          — "All" / "Filled Only" segmented control
-
-OBR attachment strategy:
-  - All items added to OBR.scene.local (not persistent scene items)
-  - Attachments use disableAttachmentBehavior for ROTATION, VISIBLE, COPY, SCALE
-  - Change detection mirrors owl-trackers: only changed items are redrawn
-  - Batch add in chunks of 100 to avoid rate limits
-
-NOTE: onMapDisplay.ts currently passes a hardcoded DPI of 150 to
-onMapHelpers. This should be replaced with OBR.scene.grid.getDpi()
-for correctness on non-standard grid sizes.
+DPI: fetched via OBR.scene.grid.getDpi() on each scene ready; cached
+as module-level `sceneDpi` and passed to all builder helpers.
 
 --------------------------------------------------------------------
 DECISIONS MADE
 --------------------------------------------------------------------
-- Survivor/Other toggle stored on token; switching preserves injury text.
+- Survivor/Other are fully independent blobs in TokenRecord; switching
+  type only changes activeType, both blobs always preserved.
+- DisplaySettings live in OBR scene metadata, not on tokens. GM-only
+  UI in token menu. Changes affect all tokens for all participants.
 - Strain boxes use inline styles (not Tailwind) to avoid purge issues.
-- Strain default for Survivor: 3 (not 9).
-- On-map items are OBR local items (lost on refresh/reconnect — this
-  is the same approach as owl-trackers and is intentional).
-- "Open Full Editor" button hidden when isPopover=true (?popover=1 URL param).
-- Conditions stored as string[]; migrateCharacterData handles legacy strings.
+- Strain default for Survivor: 3.
+- "Open Full Editor" hidden when isPopover=true (?popover=1 URL param).
+- Conditions stored as string[]; legacy string migration handled.
+- Separate embed heights for player (420px) and GM (560px).
 
 --------------------------------------------------------------------
 FILE MAP
 --------------------------------------------------------------------
 src/
-  characterDataHelpers.ts     — types, factory fns, type guard, migration
-  itemMetadataHelpers.ts      — read/write CharacterData + hidden flag
-  useCharacterDataStore.ts    — Zustand store; all actions incl. setDisplaySettings
-  useOwlbearStore.ts          — OBR global state store
-  useOwlbearStoreSync.ts      — syncs OwlbearStore to live OBR events
-  getPluginId.ts
-  getTheme.ts
-  OBRThemeProvider.tsx
-  index.css
-  lib/utils.ts
+  characterDataHelpers.ts     — types, factories, guards, migration
+  itemMetadataHelpers.ts      — read/write TokenRecord + hidden flag;
+                                getActiveDataFromItem
+  useCharacterDataStore.ts    — Zustand store for TokenRecord
+  useSceneDisplayStore.ts     — Zustand store for scene DisplaySettings;
+                                init() wires OBR.scene.onMetadataChange
+  useOwlbearStore.ts
+  useOwlbearStoreSync.ts
+  getPluginId.ts / getTheme.ts / OBRThemeProvider.tsx
+  index.css / lib/utils.ts
 
   background/
     background.html
-    background.ts             — registers context menus; calls initOnMapDisplay()
-    mathHelpers.ts            — getImageCenter, createRoundedRectangle (from owl-trackers)
-    onMapDisplay.ts           — init, refresh loop, change detection
-    onMapHelpers.ts           — buildStrainItems, buildInjuryItems, buildConditionItems
-    onMapItemIds.ts           — ID generators + getAllAttachmentIds
+    background.ts             — separate player/GM embed heights;
+                                calls initOnMapDisplay()
+    mathHelpers.ts
+    onMapDisplay.ts           — fetches DPI; reads scene DisplaySettings
+    onMapHelpers.ts           — builders; injuryDisplay from DisplaySettings
+    onMapItemIds.ts
 
   tokenMenu/
-    tokenMenu.html
-    main.tsx                  — reads ?popover=1
-    App.tsx
-    TokenMenu.tsx             — Stepper, ConditionsSection, DisplaySettingsSection
+    tokenMenu.html / main.tsx / App.tsx
+    TokenMenu.tsx             — DisplaySettingsSection GM-only
 
   action/
     action.html / main.tsx / App.tsx / Action.tsx
 
   components/
-    PartiallyControlledInput.tsx
-    TextInput.tsx
-    ToggleButton.tsx
-    StrainRow.tsx             — inline styles for red boxes + X
-    InjurySlotCard.tsx        — CLEAR buttons, treated strikethrough
+    PartiallyControlledInput.tsx / TextInput.tsx / ToggleButton.tsx
+    StrainRow.tsx / InjurySlotCard.tsx
+
+  displaySettings/            — UNUSED, delete this directory
 
 public/
   manifest.json
@@ -187,10 +194,9 @@ public/
 --------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
-- Replace hardcoded DPI=150 in onMapDisplay.ts with OBR.scene.grid.getDpi()
-- Tune TOKEN_MENU_HEIGHT in background.ts once UI is confirmed in OBR.
-- "Open Full Editor" popover — consider a dedicated editor page for GM
-  controls (hidden flag, bulk reset, etc.)
-- Consider adding a "Reset token data" GM button.
-- GitHub URL in Action.tsx is a placeholder.
-- Appearance pass still pending (user noted notes to share).
+- Delete src/displaySettings/ directory manually
+- Tune PLAYER_MENU_HEIGHT and GM_MENU_HEIGHT in background.ts once
+  confirmed in OBR
+- Consider a "Reset token data" GM button
+- GitHub URL in Action.tsx is a placeholder
+- Appearance pass pending

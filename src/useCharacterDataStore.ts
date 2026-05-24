@@ -3,7 +3,6 @@ import {
   TokenRecord,
   CharacterData,
   CharacterType,
-  DisplaySettings,
   InjurySlot,
   createDefaultTokenRecord,
   getActiveData,
@@ -12,33 +11,17 @@ import {
   STRAIN_MIN,
 } from "./characterDataHelpers";
 
-/**
- * The store holds the full TokenRecord (both survivor and other blobs).
- * All UI actions operate on the active blob only, then write the whole
- * record back to OBR so both blobs are always persisted.
- *
- * Switching characterType simply changes record.activeType — the other
- * blob is left completely untouched.
- */
 interface TokenRecordState {
   record: TokenRecord;
+  data: CharacterData; // derived: always equals getActiveData(record)
   writeToItem: ((record: TokenRecord) => Promise<void>) | undefined;
 
-  /** Replace the entire record (called on item load). */
   setRecord: (record: TokenRecord) => void;
   setWriteToItem: (fn: (record: TokenRecord) => Promise<void>) => void;
 
-  /** Convenience selector — returns the active CharacterData blob. */
-  data: CharacterData;
-
-  // --- Character type ---
   setCharacterType: (type: CharacterType) => void;
-
-  // --- Strain ---
   setStrainCurrent: (current: number) => void;
   setStrainMax: (max: number) => void;
-
-  // --- Injuries ---
   updateSeriousInjury: (index: 0 | 1, patch: Partial<InjurySlot>) => void;
   updateCriticalInjury: (patch: Partial<InjurySlot>) => void;
   updateLethalInjury: (patch: Partial<InjurySlot>) => void;
@@ -46,13 +29,8 @@ interface TokenRecordState {
   setSeriousCount: (count: 1 | 2) => void;
   setHasCritical: (val: boolean) => void;
   setHasLethal: (val: boolean) => void;
-
-  // --- Conditions ---
   addCondition: (text: string) => void;
   removeCondition: (index: number) => void;
-
-  // --- Display settings ---
-  setDisplaySettings: (patch: Partial<DisplaySettings>) => void;
 }
 
 const defaultRecord = createDefaultTokenRecord();
@@ -62,20 +40,11 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
   data: getActiveData(defaultRecord),
   writeToItem: undefined,
 
-  setRecord: (record) =>
-    set({ record, data: getActiveData(record) }),
-
+  setRecord: (record) => set({ record, data: getActiveData(record) }),
   setWriteToItem: (writeToItem) => set({ writeToItem }),
 
-  /**
-   * Switch active type. The previous blob is kept intact in the record;
-   * only record.activeType changes. No data is carried across blobs.
-   */
   setCharacterType: (type) =>
-    set((state) => {
-      const record = { ...state.record, activeType: type };
-      return mutate(state, record);
-    }),
+    set((state) => mutate(state, { ...state.record, activeType: type })),
 
   setStrainCurrent: (current) =>
     set((state) => {
@@ -113,28 +82,16 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
     }),
 
   setHasSerious: (hasSerious) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, hasSerious }));
-    }),
+    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasSerious }))),
 
   setSeriousCount: (seriousCount) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, seriousCount }));
-    }),
+    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), seriousCount }))),
 
   setHasCritical: (hasCritical) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, hasCritical }));
-    }),
+    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasCritical }))),
 
   setHasLethal: (hasLethal) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, hasLethal }));
-    }),
+    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasLethal }))),
 
   addCondition: (text) =>
     set((state) => {
@@ -147,21 +104,10 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
   removeCondition: (index) =>
     set((state) => {
       const active = getActiveData(state.record);
-      const conditions = active.conditions.filter((_, i) => i !== index);
-      return mutate(state, setActiveData(state.record, { ...active, conditions }));
-    }),
-
-  setDisplaySettings: (patch) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, {
-        ...active,
-        displaySettings: { ...active.displaySettings, ...patch },
-      }));
+      return mutate(state, setActiveData(state.record, { ...active, conditions: active.conditions.filter((_, i) => i !== index) }));
     }),
 }));
 
-/** Apply a full record update, persist to OBR, and return new state slice. */
 function mutate(
   state: TokenRecordState,
   record: TokenRecord,
