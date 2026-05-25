@@ -3,8 +3,9 @@ import { getPluginId } from "../getPluginId";
 import { HIDDEN_METADATA_ID } from "../characterDataHelpers";
 import { initOnMapDisplay } from "./onMapDisplay";
 
+// Use the same icon as the Action button for visual consistency.
 const menuIcon = new URL(
-  "../../public/tfe-trackers-logo-outline.svg",
+  "../../public/tfe-cowboy.svg",
   import.meta.url,
 ).toString();
 

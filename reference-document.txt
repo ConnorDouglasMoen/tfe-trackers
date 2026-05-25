@@ -233,11 +233,10 @@ src/
   displaySettings/            — UNUSED, delete this directory
 
 public/
-  manifest.json               — icon: tales-from-elsewhere-logo.svg
+  manifest.json               — plugin icon: tales-from-elsewhere-logo.svg
                                 action icon: tfe-cowboy.svg
   tales-from-elsewhere-logo.svg
-  tfe-cowboy.svg
-  tfe-trackers-logo-outline.svg  (used as context menu icon in background.ts)
+  tfe-cowboy.svg              — used for both Action button AND context menu icon
 
 --------------------------------------------------------------------
 TODO / OPEN ITEMS

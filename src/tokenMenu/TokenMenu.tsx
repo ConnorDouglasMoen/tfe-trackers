@@ -196,21 +196,41 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
     <div className={`${mode === "DARK" ? "dark" : ""} h-screen overflow-y-auto`}>
       <div className="flex flex-col gap-3 px-3 py-2">
 
-        {/* ── Character Type Toggle ──────────────────────────────── */}
-        <div className="flex items-center gap-1 self-start rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
-          {(["survivor", "other"] as const).map((type) => (
+        {/* ── Top row: Character Type Toggle + Open Full Editor ─── */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+            {(["survivor", "other"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setCharacterType(type)}
+                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
+                  data.characterType === type
+                    ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
+                    : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
+                }`}
+              >
+                {type === "survivor" ? "Survivor" : "Other"}
+              </button>
+            ))}
+          </div>
+          {/* Open Full Editor — GM only, hidden inside the popover itself */}
+          {role === "GM" && !isPopover && (
             <button
-              key={type}
-              onClick={() => setCharacterType(type)}
-              className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
-                data.characterType === type
-                  ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                  : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-              }`}
+              onClick={() =>
+                OBR.popover.open({
+                  id: getPluginId("token-editor"),
+                  url: "/src/tokenMenu/tokenMenu.html?popover=1",
+                  height: 600,
+                  width: 380,
+                  anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+                  transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+                })
+              }
+              className="rounded-lg bg-black/10 px-3 py-1 text-xs text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15"
             >
-              {type === "survivor" ? "Survivor" : "Other"}
+              Open Editor
             </button>
-          ))}
+          )}
         </div>
 
         {/* ── Strain ─────────────────────────────────────────────── */}
@@ -277,26 +297,6 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
         {/* ── Token Display Overrides ─────────────────────────── */}
         <TokenDisplaySection />
 
-        {/* ── Footer — hidden when already inside the popover ────── */}
-        {role === "GM" && !isPopover && (
-          <div className="flex justify-end">
-            <button
-              onClick={() =>
-                OBR.popover.open({
-                  id: getPluginId("token-editor"),
-                  url: "/src/tokenMenu/tokenMenu.html?popover=1",
-                  height: 600,
-                  width: 380,
-                  anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-                  transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-                })
-              }
-              className="rounded-lg bg-black/10 px-3 py-1 text-xs text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15"
-            >
-              Open Full Editor
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
