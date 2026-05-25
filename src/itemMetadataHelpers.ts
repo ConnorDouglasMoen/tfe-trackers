@@ -14,6 +14,26 @@ import {
 // TokenRecord read / write
 /////////////////////////////////////////////////////////////////////
 
+/**
+ * Write a TokenRecord to a specific item by its OBR item ID.
+ * Used by the Action panel tracked-token rows, which target arbitrary tokens
+ * rather than the current selection.
+ */
+export async function writeTokenRecordToItem(
+  itemId: string,
+  record: TokenRecord,
+): Promise<void> {
+  const items = await OBR.scene.items.getItems([itemId]);
+  if (items.length === 0) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+  OBR.scene.items.updateItems(items, (mutableItems) => {
+    for (const item of mutableItems) {
+      item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
+    }
+  });
+}
+
 /** Write a TokenRecord to the currently selected item. */
 export async function writeTokenRecordToSelection(
   record: TokenRecord,
