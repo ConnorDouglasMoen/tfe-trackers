@@ -5,23 +5,18 @@
 export type InjurySlot = {
   id: string;
   location: string;
-  complications: string;
+  complications: string[]; // list of complication strings, like conditions
   treated: boolean;
 };
 
 export type CharacterType = "survivor" | "other";
 
-/**
- * Scene-level display settings — stored in OBR scene metadata, not on tokens.
- * Changing these affects all tokens for all participants.
- */
 export type DisplaySettings = {
   showStrain: boolean;
   showConditions: boolean;
   injuryDisplay: "all" | "filled-only";
 };
 
-/** Data for one character type. Stored independently per token. */
 export type CharacterData = {
   characterType: CharacterType;
   strainMax: number;
@@ -36,10 +31,6 @@ export type CharacterData = {
   conditions: string[];
 };
 
-/**
- * Top-level record stored in OBR item metadata.
- * Both blobs are kept independently; activeType controls which is shown.
- */
 export type TokenRecord = {
   activeType: CharacterType;
   survivor: CharacterData;
@@ -52,7 +43,6 @@ export type TokenRecord = {
 
 export const TOKEN_RECORD_METADATA_ID = "tokenRecord";
 export const HIDDEN_METADATA_ID = "hidden";
-
 export const STRAIN_MIN = 1;
 export const STRAIN_MAX = 9;
 
@@ -70,7 +60,7 @@ export function createInjurySlot(): InjurySlot {
   return {
     id: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     location: "",
-    complications: "",
+    complications: [],
     treated: false,
   };
 }
@@ -134,8 +124,9 @@ function isInjurySlot(v: unknown): v is InjurySlot {
   return (
     typeof s?.id === "string" &&
     typeof s?.location === "string" &&
-    typeof s?.complications === "string" &&
-    typeof s?.treated === "boolean"
+    typeof s?.treated === "boolean" &&
+    // complications may be legacy string or new string[]
+    (Array.isArray(s?.complications) || typeof s?.complications === "string")
   );
 }
 
@@ -167,17 +158,34 @@ export function isTokenRecord(v: unknown): v is TokenRecord {
 // Migration
 /////////////////////////////////////////////////////////////////////
 
+/** Migrate a single InjurySlot — converts legacy string complications to string[]. */
+function migrateInjurySlot(s: InjurySlot): InjurySlot {
+  return {
+    ...s,
+    complications: Array.isArray(s.complications)
+      ? s.complications
+      : typeof s.complications === "string" && (s.complications as string).length > 0
+        ? [s.complications as string]
+        : [],
+  };
+}
+
 function migrateCharacterData(d: CharacterData): CharacterData {
   return {
     ...d,
     characterType: d.characterType ?? "survivor",
     seriousCount: d.seriousCount ?? 2,
-    // Strip legacy displaySettings if present (now lives in scene metadata)
     conditions: Array.isArray(d.conditions)
       ? d.conditions
       : typeof d.conditions === "string" && (d.conditions as string).length > 0
         ? [d.conditions as string]
         : [],
+    seriousInjuries: [
+      migrateInjurySlot(d.seriousInjuries[0]),
+      migrateInjurySlot(d.seriousInjuries[1]),
+    ],
+    criticalInjury: migrateInjurySlot(d.criticalInjury),
+    lethalInjury: migrateInjurySlot(d.lethalInjury),
   };
 }
 

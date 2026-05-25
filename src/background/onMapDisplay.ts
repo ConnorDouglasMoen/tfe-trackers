@@ -14,18 +14,8 @@ const STRAIN_ROW_HEIGHT = 14;
 const INJURY_ROW_HEIGHT = 18;
 
 let itemsLast: Image[] = [];
-const addItemsArray: Item[] = [];
-const deleteItemsArray: string[] = [];
 let sceneListenersSet = false;
-
-/** Scene-level display settings — updated via OBR.scene.onMetadataChange. */
 let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
-
-/**
- * Live scene DPI — fetched once per scene ready and cached.
- * Passed to all builder helpers so on-map geometry scales correctly
- * regardless of the campaign's grid DPI setting.
- */
 let sceneDpi = 150;
 
 function readDisplaySettings(meta: Metadata): DisplaySettings {
@@ -40,7 +30,6 @@ export async function initOnMapDisplay() {
   const meta = await OBR.scene.getMetadata();
   displaySettings = readDisplaySettings(meta);
 
-  // Re-draw all tokens whenever the GM changes a display setting.
   OBR.scene.onMetadataChange((meta) => {
     displaySettings = readDisplaySettings(meta);
     void refreshAll();
@@ -55,18 +44,19 @@ export async function initOnMapDisplay() {
 }
 
 async function refreshAll() {
-  // Fetch current DPI each time the scene becomes ready (DPI can differ per scene).
   sceneDpi = await OBR.scene.grid.getDpi();
 
   const items: Image[] = await OBR.scene.items.getItems(
     (item) => (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
   );
   itemsLast = items;
-  for (const item of items) updateItem(item);
-  await OBR.scene.local.deleteItems(deleteItemsArray);
-  await batchAddToScene(addItemsArray);
-  addItemsArray.length = 0;
-  deleteItemsArray.length = 0;
+
+  const addItems: Item[] = [];
+  const deleteIds: string[] = [];
+  for (const item of items) updateItem(item, addItems, deleteIds);
+
+  if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
+  await batchAdd(addItems);
 }
 
 function startListeners() {
@@ -80,11 +70,14 @@ function startListeners() {
     );
     const changed = getChangedItems(images);
     itemsLast = images;
-    for (const item of changed) updateItem(item);
-    await OBR.scene.local.deleteItems(deleteItemsArray);
-    await OBR.scene.local.addItems(addItemsArray);
-    addItemsArray.length = 0;
-    deleteItemsArray.length = 0;
+    if (changed.length === 0) return;
+
+    const addItems: Item[] = [];
+    const deleteIds: string[] = [];
+    for (const item of changed) updateItem(item, addItems, deleteIds);
+
+    if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
+    await batchAdd(addItems);
   });
 
   OBR.scene.onReadyChange((isReady) => {
@@ -92,47 +85,43 @@ function startListeners() {
   });
 }
 
-function updateItem(image: Image) {
+function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
+  deleteIds.push(...getAllAttachmentIds(image.id));
+
   const raw = image.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)];
-  if (raw === undefined) {
-    deleteItemsArray.push(...getAllAttachmentIds(image.id));
-    return;
-  }
+  if (raw === undefined) return;
 
   const data = getActiveDataFromItem(image);
   const { showStrain, showConditions } = displaySettings;
 
   if (showStrain) {
-    buildStrainItems(image, sceneDpi, data, addItemsArray, deleteItemsArray);
-  } else {
-    for (let i = 0; i < 9; i++) {
-      deleteItemsArray.push(
-        `${image.id}-tfe-strain-bg-${i}`,
-        `${image.id}-tfe-strain-x-${i}`,
-      );
-    }
+    buildStrainItems(image, sceneDpi, data, addItems);
   }
 
   buildInjuryItems(
     image, sceneDpi, data, displaySettings,
     showStrain ? STRAIN_ROW_HEIGHT : 0,
-    addItemsArray, deleteItemsArray,
+    addItems,
   );
 
-  if (showConditions && data.conditions.length > 0) {
+  // Build the text bubble row when there is anything to show:
+  // untreated complications always appear; conditions appear when showConditions is on.
+  const hasUntreatedComplications = [
+    ...data.seriousInjuries,
+    data.criticalInjury,
+    data.lethalInjury,
+  ].some((s) => !s.treated && s.complications.length > 0);
+
+  const hasConditions = showConditions && data.conditions.length > 0;
+
+  if (hasUntreatedComplications || hasConditions) {
     buildConditionItems(
       image, sceneDpi, data,
       showStrain ? STRAIN_ROW_HEIGHT : 0,
       INJURY_ROW_HEIGHT,
-      addItemsArray, deleteItemsArray,
+      addItems,
+      showConditions,
     );
-  } else {
-    for (let i = 0; i < 20; i++) {
-      deleteItemsArray.push(
-        `${image.id}-tfe-cond-bg-${i}`,
-        `${image.id}-tfe-cond-text-${i}`,
-      );
-    }
   }
 }
 
@@ -160,7 +149,8 @@ function getChangedItems(current: Image[]): Image[] {
 }
 
 const BATCH_SIZE = 100;
-async function batchAddToScene(items: Item[]) {
+async function batchAdd(items: Item[]) {
+  if (items.length === 0) return;
   for (let i = 0; i < Math.ceil(items.length / BATCH_SIZE); i++) {
     await OBR.scene.local.addItems(
       items.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE),

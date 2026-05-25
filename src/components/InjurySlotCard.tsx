@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { InjurySlot } from "../characterDataHelpers";
 import TextInput from "./TextInput";
 import ToggleButton from "./ToggleButton";
@@ -14,7 +15,6 @@ const SEVERITY_COLORS = {
 
 export type InjurySeverity = keyof typeof SEVERITY_COLORS;
 
-/** Small inline clear button used next to text fields. */
 function ClearButton({ onClick }: { onClick: () => void }): React.JSX.Element {
   return (
     <button
@@ -29,8 +29,10 @@ function ClearButton({ onClick }: { onClick: () => void }): React.JSX.Element {
 /**
  * A card representing one injury slot (Serious, Critical, or Lethal).
  *
- * - Location and Complications each have a CLEAR button.
- * - When Treated is on, the complications text is faded and struck through.
+ * - Location has a CLEAR button.
+ * - Complications work like Conditions: Enter to add, X to delete each item.
+ * - Treated toggle is disabled unless location or at least one complication is present.
+ * - Clearing all content automatically resets Treated.
  */
 export default function InjurySlotCard({
   slot,
@@ -43,6 +45,38 @@ export default function InjurySlotCard({
   label: string;
   onUpdate: (updated: Partial<InjurySlot>) => void;
 }): React.JSX.Element {
+  const [compInput, setCompInput] = useState("");
+
+  const hasContent = slot.location.trim() !== "" || slot.complications.length > 0;
+
+  const handleClearLocation = () => {
+    const patch: Partial<InjurySlot> = { location: "" };
+    if (slot.complications.length === 0) patch.treated = false;
+    onUpdate(patch);
+  };
+
+  const addComplication = (text: string) => {
+    const trimmed = text.trim();
+    if (trimmed === "") return;
+    onUpdate({ complications: [...slot.complications, trimmed] });
+  };
+
+  const removeComplication = (index: number) => {
+    const updated = slot.complications.filter((_, i) => i !== index);
+    const patch: Partial<InjurySlot> = { complications: updated };
+    // Reset treated if location is also empty and no complications remain.
+    if (updated.length === 0 && slot.location.trim() === "") patch.treated = false;
+    onUpdate(patch);
+  };
+
+  const handleCompKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addComplication(compInput);
+      setCompInput("");
+    }
+  };
+
   return (
     <div className={cn("flex flex-col gap-1.5 rounded-lg border p-2", SEVERITY_COLORS[severity])}>
 
@@ -51,11 +85,14 @@ export default function InjurySlotCard({
         <span className="text-xs font-semibold text-text-secondary dark:text-text-secondary-dark">
           {label}
         </span>
-        <ToggleButton
-          isChecked={slot.treated}
-          onChange={(checked) => onUpdate({ treated: checked })}
-          label="Treated"
-        />
+        <div className={cn("transition-opacity duration-150", !hasContent && "cursor-not-allowed opacity-30")}>
+          <ToggleButton
+            isChecked={slot.treated}
+            onChange={(checked) => { if (hasContent) onUpdate({ treated: checked }); }}
+            label="Treated"
+            className={!hasContent ? "pointer-events-none" : undefined}
+          />
+        </div>
       </div>
 
       {/* Location row */}
@@ -67,27 +104,46 @@ export default function InjurySlotCard({
           className="flex-1"
         />
         {slot.location !== "" && (
-          <ClearButton onClick={() => onUpdate({ location: "" })} />
+          <ClearButton onClick={handleClearLocation} />
         )}
       </div>
 
-      {/* Complications row — faded + strikethrough when treated */}
-      <div className="flex items-start">
-        <textarea
-          value={slot.complications}
-          onChange={(e) => onUpdate({ complications: e.target.value })}
-          onBlur={(e) => onUpdate({ complications: e.target.value })}
-          placeholder="Complications…"
-          rows={2}
-          className={cn(
-            "flex-1 resize-none rounded bg-transparent text-sm outline-none placeholder:text-text-disabled dark:placeholder:text-text-disabled-dark",
-            slot.treated
-              ? "text-text-disabled line-through dark:text-text-disabled-dark"
-              : "text-text-primary dark:text-text-primary-dark",
-          )}
+      {/* Complications — Enter to add, X to delete */}
+      <div className="flex flex-col gap-1">
+        <input
+          type="text"
+          value={compInput}
+          onChange={(e) => setCompInput(e.target.value)}
+          onKeyDown={handleCompKeyDown}
+          placeholder="Add complication, press Enter…"
+          className="w-full rounded bg-transparent px-0 py-0.5 text-sm text-text-primary outline-none placeholder:text-text-disabled dark:text-text-primary-dark dark:placeholder:text-text-disabled-dark"
         />
-        {slot.complications !== "" && (
-          <ClearButton onClick={() => onUpdate({ complications: "" })} />
+        {slot.complications.length > 0 && (
+          <ul className="flex flex-col gap-0.5">
+            {slot.complications.map((comp, index) => (
+              <li
+                key={index}
+                className={cn(
+                  "flex items-center justify-between gap-1 rounded px-1.5 py-0.5 text-sm",
+                  slot.treated
+                    ? "text-text-disabled line-through dark:text-text-disabled-dark"
+                    : "text-text-primary dark:text-text-primary-dark",
+                )}
+              >
+                <span>{comp}</span>
+                <button
+                  onClick={() => removeComplication(index)}
+                  aria-label={`Remove complication: ${comp}`}
+                  className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+                >
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>
