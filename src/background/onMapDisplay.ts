@@ -11,9 +11,6 @@ import { getActiveDataFromItem, getTokenRecordFromItem } from "../itemMetadataHe
 import { getAllAttachmentIds } from "./onMapItemIds";
 import { buildStrainItems, buildInjuryItems, buildConditionItems } from "./onMapHelpers";
 
-const STRAIN_ROW_HEIGHT = 13;
-const INJURY_ROW_HEIGHT = 14;
-
 let itemsLast: Image[] = [];
 let sceneListenersSet = false;
 let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
