@@ -26,6 +26,90 @@ function Stepper({
   );
 }
 
+/**
+ * Per-token on-map display overrides. Each control has three states:
+ *   - Null ("Scene"): inherit from scene-level setting in the Action panel.
+ *   - True/"all" ("Show" / "All"): force-show on this token.
+ *   - False/"filled-only"/"none": force the chosen value on this token.
+ */
+function TokenDisplaySection(): React.JSX.Element {
+  const overrides = useCharacterDataStore((state) => state.record.displayOverrides);
+  const setDisplayOverride = useCharacterDataStore((state) => state.setDisplayOverride);
+
+  const boolLabel = (val: boolean | null) =>
+    val === null ? "Scene" : val ? "Show" : "Hide";
+
+  const injuryOpts = [null, "all", "filled-only", "none"] as const;
+  const injuryLabel = (val: typeof injuryOpts[number]) =>
+    val === null ? "Scene" : val === "all" ? "All" : val === "filled-only" ? "Filled" : "None";
+
+  const btnBase =
+    "rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150";
+  const btnActive =
+    "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark";
+  const btnInactive =
+    "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark";
+
+  return (
+    <section>
+      <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+        Token Display
+      </h2>
+      <div className="flex flex-col gap-2">
+
+        {/* Strain override */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-primary dark:text-text-primary-dark">Strain</span>
+          <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+            {([null, true, false] as const).map((val) => (
+              <button
+                key={String(val)}
+                onClick={() => setDisplayOverride({ showStrain: val })}
+                className={`${btnBase} ${overrides.showStrain === val ? btnActive : btnInactive}`}
+              >
+                {boolLabel(val)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Injuries override */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-primary dark:text-text-primary-dark">Injuries</span>
+          <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+            {injuryOpts.map((val) => (
+              <button
+                key={String(val)}
+                onClick={() => setDisplayOverride({ injuryDisplay: val })}
+                className={`${btnBase} ${overrides.injuryDisplay === val ? btnActive : btnInactive}`}
+              >
+                {injuryLabel(val)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Conditions & Complications override */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-primary dark:text-text-primary-dark">Conditions &amp; Complications</span>
+          <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+            {([null, true, false] as const).map((val) => (
+              <button
+                key={String(val)}
+                onClick={() => setDisplayOverride({ showConditions: val })}
+                className={`${btnBase} ${overrides.showConditions === val ? btnActive : btnInactive}`}
+              >
+                {boolLabel(val)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
 /** Conditions input + saved list. */
 function ConditionsSection(): React.JSX.Element {
   const conditions = useCharacterDataStore((state) => state.data.conditions);
@@ -189,6 +273,9 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
 
         {/* ── Conditions ─────────────────────────────────────────── */}
         <ConditionsSection />
+
+        {/* ── Token Display Overrides ─────────────────────────── */}
+        <TokenDisplaySection />
 
         {/* ── Footer — hidden when already inside the popover ────── */}
         {role === "GM" && !isPopover && (

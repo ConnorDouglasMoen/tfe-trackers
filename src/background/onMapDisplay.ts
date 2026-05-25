@@ -4,9 +4,10 @@ import {
   TOKEN_RECORD_METADATA_ID,
   DisplaySettings,
   DEFAULT_DISPLAY_SETTINGS,
+  resolveDisplaySettings,
 } from "../characterDataHelpers";
 import { SCENE_DISPLAY_METADATA_ID } from "../useSceneDisplayStore";
-import { getActiveDataFromItem } from "../itemMetadataHelpers";
+import { getActiveDataFromItem, getTokenRecordFromItem } from "../itemMetadataHelpers";
 import { getAllAttachmentIds } from "./onMapItemIds";
 import { buildStrainItems, buildInjuryItems, buildConditionItems } from "./onMapHelpers";
 
@@ -92,21 +93,27 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   if (raw === undefined) return;
 
   const data = getActiveDataFromItem(image);
-  const { showStrain, showConditions } = displaySettings;
+
+  // Resolve effective display settings: token overrides take precedence over scene defaults.
+  const record = getTokenRecordFromItem(image);
+  const effectiveSettings = resolveDisplaySettings(displaySettings, record.displayOverrides);
+  const { showStrain, showConditions, injuryDisplay } = effectiveSettings;
 
   if (showStrain) {
     buildStrainItems(image, sceneDpi, data, addItems);
   }
 
-  buildInjuryItems(
-    image, sceneDpi, data, displaySettings,
-    showStrain ? STRAIN_ROW_HEIGHT : 0,
-    addItems,
-  );
+  // Injury circles — skipped entirely when injuryDisplay is "none".
+  if (injuryDisplay !== "none") {
+    buildInjuryItems(
+      image, sceneDpi, data, effectiveSettings,
+      showStrain ? STRAIN_ROW_HEIGHT : 0,
+      addItems,
+    );
+  }
 
-  // Build the text bubble row when there is anything to show:
-  // untreated complications always appear; conditions appear when showConditions is on.
-  const hasUntreatedComplications = [
+  // Text bubbles — both complications and conditions are gated by showConditions.
+  const hasUntreatedComplications = showConditions && [
     ...data.seriousInjuries,
     data.criticalInjury,
     data.lethalInjury,

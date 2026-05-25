@@ -4,6 +4,7 @@ import {
   CharacterData,
   CharacterType,
   InjurySlot,
+  TokenDisplayOverrides,
   createDefaultTokenRecord,
   getActiveData,
   setActiveData,
@@ -31,6 +32,7 @@ interface TokenRecordState {
   setHasLethal: (val: boolean) => void;
   addCondition: (text: string) => void;
   removeCondition: (index: number) => void;
+  setDisplayOverride: (patch: Partial<TokenDisplayOverrides>) => void;
 }
 
 const defaultRecord = createDefaultTokenRecord();
@@ -106,6 +108,13 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
       const active = getActiveData(state.record);
       return mutate(state, setActiveData(state.record, { ...active, conditions: active.conditions.filter((_, i) => i !== index) }));
     }),
+
+  // Patch one or more per-token display overrides (null = revert to scene default).
+  setDisplayOverride: (patch) =>
+    set((state) => mutate(state, {
+      ...state.record,
+      displayOverrides: { ...state.record.displayOverrides, ...patch },
+    })),
 }));
 
 function mutate(

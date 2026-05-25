@@ -14,7 +14,18 @@ export type CharacterType = "survivor" | "other";
 export type DisplaySettings = {
   showStrain: boolean;
   showConditions: boolean;
-  injuryDisplay: "all" | "filled-only";
+  // "all" = show empty + filled circles; "filled-only" = filled only; "none" = hide row entirely
+  injuryDisplay: "all" | "filled-only" | "none";
+};
+
+/**
+ * Per-token display overrides. Each field is either a value that overrides
+ * the scene-level DisplaySettings, or null to inherit from the scene default.
+ */
+export type TokenDisplayOverrides = {
+  showStrain: boolean | null;
+  showConditions: boolean | null;
+  injuryDisplay: "all" | "filled-only" | "none" | null;
 };
 
 export type CharacterData = {
@@ -35,6 +46,8 @@ export type TokenRecord = {
   activeType: CharacterType;
   survivor: CharacterData;
   other: CharacterData;
+  /** Per-token display overrides; null fields fall back to scene DisplaySettings. */
+  displayOverrides: TokenDisplayOverrides;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -49,8 +62,30 @@ export const STRAIN_MAX = 9;
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showStrain: true,
   showConditions: true,
-  injuryDisplay: "all",
+  injuryDisplay: "all", // show all injury circles by default
 };
+
+/** Default overrides — all null means "use scene settings". */
+export const DEFAULT_TOKEN_DISPLAY_OVERRIDES: TokenDisplayOverrides = {
+  showStrain: null,
+  showConditions: null,
+  injuryDisplay: null,
+};
+
+/**
+ * Merge scene-level settings with per-token overrides.
+ * Token override wins when non-null; otherwise scene setting is used.
+ */
+export function resolveDisplaySettings(
+  scene: DisplaySettings,
+  overrides: TokenDisplayOverrides,
+): DisplaySettings {
+  return {
+    showStrain: overrides.showStrain ?? scene.showStrain,
+    showConditions: overrides.showConditions ?? scene.showConditions,
+    injuryDisplay: overrides.injuryDisplay ?? scene.injuryDisplay,
+  };
+}
 
 /////////////////////////////////////////////////////////////////////
 // Factory helpers
@@ -102,6 +137,7 @@ export function createDefaultTokenRecord(): TokenRecord {
     activeType: "survivor",
     survivor: createSurvivorData(),
     other: createOtherData(),
+    displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES },
   };
 }
 
@@ -151,6 +187,7 @@ export function isTokenRecord(v: unknown): v is TokenRecord {
     (r?.activeType === "survivor" || r?.activeType === "other") &&
     isCharacterData(r?.survivor) &&
     isCharacterData(r?.other)
+    // displayOverrides is added by migration, so we don't require it here
   );
 }
 
@@ -189,21 +226,32 @@ function migrateCharacterData(d: CharacterData): CharacterData {
   };
 }
 
+/** Migrate a TokenDisplayOverrides blob — fills in missing null fields. */
+function migrateDisplayOverrides(raw: unknown): TokenDisplayOverrides {
+  const r = raw as Partial<TokenDisplayOverrides>;
+  return {
+    showStrain: r?.showStrain ?? null,
+    showConditions: r?.showConditions ?? null,
+    injuryDisplay: r?.injuryDisplay ?? null,
+  };
+}
+
 export function migrateToTokenRecord(raw: unknown): TokenRecord {
   if (isTokenRecord(raw)) {
     return {
       activeType: raw.activeType,
       survivor: migrateCharacterData(raw.survivor),
       other: migrateCharacterData(raw.other),
+      displayOverrides: migrateDisplayOverrides((raw as TokenRecord).displayOverrides),
     };
   }
   if (isCharacterData(raw)) {
     const migrated = migrateCharacterData(raw);
     const defaults = createDefaultTokenRecord();
     if (migrated.characterType === "other") {
-      return { activeType: "other", survivor: defaults.survivor, other: migrated };
+      return { activeType: "other", survivor: defaults.survivor, other: migrated, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES } };
     }
-    return { activeType: "survivor", survivor: migrated, other: defaults.other };
+    return { activeType: "survivor", survivor: migrated, other: defaults.other, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES } };
   }
   return createDefaultTokenRecord();
 }

@@ -91,7 +91,7 @@ export default function Action(): React.JSX.Element {
                 />
               </div>
               <div className={rowClass}>
-                <span>Show Conditions</span>
+                <span>Show Conditions &amp; Complications</span>
                 <Toggle
                   checked={settings.showConditions}
                   onChange={() => setSettings({ showConditions: !settings.showConditions })}
@@ -100,17 +100,17 @@ export default function Action(): React.JSX.Element {
               <div className={rowClass}>
                 <span>Injuries</span>
                 <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
-                  {(["all", "filled-only"] as const).map((mode) => (
+                  {(["all", "filled-only", "none"] as const).map((opt) => (
                     <button
-                      key={mode}
-                      onClick={() => setSettings({ injuryDisplay: mode })}
+                      key={opt}
+                      onClick={() => setSettings({ injuryDisplay: opt })}
                       className={`rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150 ${
-                        settings.injuryDisplay === mode
+                        settings.injuryDisplay === opt
                           ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
                           : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
                       }`}
                     >
-                      {mode === "all" ? "All" : "Filled Only"}
+                      {opt === "all" ? "All" : opt === "filled-only" ? "Filled" : "None"}
                     </button>
                   ))}
                 </div>
