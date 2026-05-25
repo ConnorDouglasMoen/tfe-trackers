@@ -2,6 +2,7 @@ import {
   AttachmentBehavior,
   Image,
   Item,
+  buildPath, Command,
   buildShape,
   buildText,
 } from "@owlbear-rodeo/sdk";
@@ -19,17 +20,17 @@ import { getImageCenter } from "./mathHelpers";
 const DISABLE_BEHAVIORS: AttachmentBehavior[] = ["ROTATION", "VISIBLE", "COPY", "SCALE"];
 const FONT = "Roboto, sans-serif";
 const DISABLE_HIT = true;
-const TEXT_VERTICAL_OFFSET = -1.2;
+const TEXT_VERTICAL_OFFSET = -1;
 
-const BOX_SIZE = 14;
+const BOX_SIZE = 13;
 const BOX_GAP = 3;
-const CIRCLE_SIZE = 18;
-const CIRCLE_GAP = 3;
-const ROW_GAP = 4;
-const BUBBLE_HEIGHT = 14;
-const BUBBLE_PADDING_X = 4;
+const CIRCLE_SIZE = 14;
+const CIRCLE_GAP = 2;
+const ROW_GAP = 2;
+const BUBBLE_HEIGHT = 12;
+const BUBBLE_PADDING_X = 2;
 const BUBBLE_FONT_SIZE = 9;
-const ROW_OPACITY = 0.85;
+const ROW_OPACITY = 0.95;
 const ATTACHMENT_LAYER = "ATTACHMENT" as const;
 const TEXT_LAYER = "TEXT" as const;
 
@@ -53,6 +54,14 @@ function getTokenBottomLeft(image: Image, sceneDpi: number) {
   const halfW = (image.image.width * dpiScale * Math.abs(image.scale.x)) / 2;
   const halfH = (image.image.height * dpiScale * Math.abs(image.scale.y)) / 2;
   return { x: center.x - halfW, y: center.y + halfH };
+}
+
+function getTokenTopLeft(image: Image, sceneDpi: number) {
+  const center = getImageCenter(image, sceneDpi);
+  const dpiScale = sceneDpi / image.grid.dpi;
+  const halfW = (image.image.width * dpiScale * Math.abs(image.scale.x)) / 2;
+  const halfH = (image.image.height * dpiScale * Math.abs(image.scale.y)) / 2;
+  return { x: center.x - halfW, y: center.y - halfH };
 }
 
 function buildCenteredShapeWithText(opts: {
@@ -120,10 +129,10 @@ export function buildStrainItems(
   addItems: Item[],
 ): void {
   const origin = getTokenBottomLeft(image, sceneDpi);
-  const rowY = origin.y + ROW_GAP + BOX_SIZE / 2;
+  const rowY = origin.y - (BOX_SIZE + ROW_GAP);
 
   for (let i = 0; i < data.strainMax; i++) {
-    const cx = origin.x + i * (BOX_SIZE + BOX_GAP) + BOX_SIZE / 2;
+    const cx = origin.x + ROW_GAP + i * (BOX_SIZE + BOX_GAP);
     const filled = i < data.strainCurrent;
 
     buildCenteredShapeWithText({
@@ -194,7 +203,7 @@ export function buildInjuryItems(
   addItems: Item[],
 ): void {
   const origin = getTokenBottomLeft(image, sceneDpi);
-  const rowY = origin.y + ROW_GAP + strainRowHeight + ROW_GAP + CIRCLE_SIZE / 2;
+  const rowY = origin.y + CIRCLE_SIZE / 2;
 
   const resolved = resolveInjuries(data);
   const showEmpty = displaySettings.injuryDisplay === "all";
@@ -203,7 +212,7 @@ export function buildInjuryItems(
   for (const inj of resolved) {
     if (inj.isEmpty && !showEmpty) continue;
 
-    const cx = origin.x + colIndex * (CIRCLE_SIZE + CIRCLE_GAP) + CIRCLE_SIZE / 2;
+    const cx = origin.x + ROW_GAP + colIndex * (CIRCLE_SIZE + CIRCLE_GAP) + CIRCLE_SIZE / 2;
     const colors = INJURY_COLORS[inj.severity];
     const icon = inj.injurySlot.treated ? "✓" : inj.isEmpty ? "" : "!";
 
@@ -317,45 +326,58 @@ export function buildConditionItems(
   addItems: Item[],
   showConditions: boolean,
 ): void {
-  const origin = getTokenBottomLeft(image, sceneDpi);
+  const origin = getTokenTopLeft(image, sceneDpi);
   const dpiScale = sceneDpi / image.grid.dpi;
   const tokenWidth = image.image.width * dpiScale * Math.abs(image.scale.x);
 
-  const baseY = origin.y + ROW_GAP + strainRowHeight + ROW_GAP + injuryRowHeight + ROW_GAP;
-  let currentX = origin.x;
+  const baseY = origin.y + ROW_GAP;
+  const baseX = origin.x + ROW_GAP;
+  let currentX = baseX;
   let currentY = baseY;
+  const conicWeight = Math.sqrt(2) / 2;
 
   const bubbles = collectBubbleStrings(data, showConditions);
 
   for (let i = 0; i < bubbles.length; i++) {
     const { text, color } = bubbles[i];
-    const bubbleWidth = Math.min(text.length * 5.5 + BUBBLE_PADDING_X * 2, tokenWidth);
+    const textWidth = buildText().plainText(text).width("AUTO").build().text.width;
+    const bubbleWidth = Math.min(text.length * 5 + BUBBLE_PADDING_X * 2, tokenWidth);
 
-    if (i > 0 && currentX + bubbleWidth > origin.x + tokenWidth) {
-      currentX = origin.x;
+    if (i > 0 && currentX + bubbleWidth > baseX + tokenWidth) {
+      currentX = baseX;
       currentY += BUBBLE_HEIGHT + 2;
     }
 
     addItems.push(
-      buildShape()
-        .width(bubbleWidth).height(BUBBLE_HEIGHT).shapeType("RECTANGLE")
+      buildPath()
+        .commands([
+          [Command.MOVE, currentX + 2, currentY],
+          [Command.LINE, currentX + bubbleWidth - 2, currentY],
+          [Command.CONIC, currentX + bubbleWidth - 2, currentY + 2, currentX + bubbleWidth, currentY + 2, conicWeight],
+          [Command.LINE, currentX + bubbleWidth, currentY + BUBBLE_HEIGHT - 2],
+          [Command.CONIC, currentX + bubbleWidth - 2, currentY + BUBBLE_HEIGHT - 2, currentX + bubbleWidth - 2, currentY + BUBBLE_HEIGHT, conicWeight],
+          [Command.LINE, currentX + 2, currentY + BUBBLE_HEIGHT],
+          [Command.CONIC, currentX + 2, currentY + BUBBLE_HEIGHT - 2, currentX, currentY + BUBBLE_HEIGHT - 2, conicWeight],
+          [Command.LINE, currentX, currentY + 2],
+          [Command.CONIC, currentX + 2, currentY + 2, currentX + 2, currentY, conicWeight],
+          [Command.CLOSE]
+        ])
         .fillColor("#1a1a2e").fillOpacity(0.8)
         .strokeColor(color).strokeOpacity(0.8).strokeWidth(1)
-        .position({ x: currentX, y: currentY })
         .attachedTo(image.id).layer(ATTACHMENT_LAYER).locked(true)
         .id(getConditionBgId(image.id, i))
         .visible(image.visible)
         .disableAttachmentBehavior(DISABLE_BEHAVIORS).disableHit(DISABLE_HIT)
         .build(),
-    );
+    )
 
     addItems.push(
       buildText()
-        .position({ x: currentX + BUBBLE_PADDING_X, y: currentY + TEXT_VERTICAL_OFFSET })
+        .position({ x: currentX, y: currentY - 1 })
         .plainText(text)
-        .textAlign("LEFT").textAlignVertical("MIDDLE")
+        .textAlign("CENTER").textAlignVertical("MIDDLE")
         .fontSize(BUBBLE_FONT_SIZE).fontFamily(FONT).textType("PLAIN")
-        .height(BUBBLE_HEIGHT + 2).width(bubbleWidth - BUBBLE_PADDING_X)
+        .height(BUBBLE_HEIGHT).width(bubbleWidth)
         .fontWeight(400).fillColor(color).fillOpacity(0.9)
         .attachedTo(image.id).layer(TEXT_LAYER).locked(true)
         .id(getConditionTextId(image.id, i))
@@ -364,6 +386,6 @@ export function buildConditionItems(
         .build(),
     );
 
-    currentX += bubbleWidth + 3;
+    currentX += bubbleWidth + 2;
   }
 }

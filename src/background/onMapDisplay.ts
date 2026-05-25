@@ -10,8 +10,8 @@ import { getActiveDataFromItem } from "../itemMetadataHelpers";
 import { getAllAttachmentIds } from "./onMapItemIds";
 import { buildStrainItems, buildInjuryItems, buildConditionItems } from "./onMapHelpers";
 
-const STRAIN_ROW_HEIGHT = 14;
-const INJURY_ROW_HEIGHT = 18;
+const STRAIN_ROW_HEIGHT = 13;
+const INJURY_ROW_HEIGHT = 14;
 
 let itemsLast: Image[] = [];
 let sceneListenersSet = false;
