@@ -107,7 +107,6 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   if (injuryDisplay !== "none") {
     buildInjuryItems(
       image, sceneDpi, data, effectiveSettings,
-      showStrain ? STRAIN_ROW_HEIGHT : 0,
       addItems,
     );
   }
@@ -124,8 +123,6 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   if (hasUntreatedComplications || hasConditions) {
     buildConditionItems(
       image, sceneDpi, data,
-      showStrain ? STRAIN_ROW_HEIGHT : 0,
-      INJURY_ROW_HEIGHT,
       addItems,
       showConditions,
     );

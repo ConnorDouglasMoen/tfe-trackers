@@ -207,7 +207,6 @@ export function buildInjuryItems(
   sceneDpi: number,
   data: CharacterData,
   displaySettings: DisplaySettings,
-  strainRowHeight: number,
   addItems: Item[],
 ): void {
   const origin = getTokenBottomLeft(image, sceneDpi);
@@ -341,8 +340,6 @@ export function buildConditionItems(
   image: Image,
   sceneDpi: number,
   data: CharacterData,
-  strainRowHeight: number,
-  injuryRowHeight: number,
   addItems: Item[],
   showConditions: boolean,
 ): void {
