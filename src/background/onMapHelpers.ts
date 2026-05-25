@@ -22,9 +22,9 @@ const FONT = "Roboto, sans-serif";
 const DISABLE_HIT = true;
 const TEXT_VERTICAL_OFFSET = -1;
 
-const BOX_SIZE = 13;
+const BOX_SIZE = 14;
 const BOX_GAP = 3;
-const CIRCLE_SIZE = 14;
+const CIRCLE_SIZE = 16;
 const CIRCLE_GAP = 2;
 const ROW_GAP = 2;
 const BUBBLE_HEIGHT = 12;
