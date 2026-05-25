@@ -102,9 +102,17 @@ function buildCenteredShapeWithText(opts: {
       .build(),
   );
 
+  let textCX = cx;
+  let textCY = cy
+
+  if (shapeType === "RECTANGLE") {
+    textCX = cx + size / 2;
+    textCY = cy + size / 2;
+  }
+
   addItems.push(
     buildText()
-      .position({ x: cx - size / 2, y: cy - size / 2 + TEXT_VERTICAL_OFFSET })
+      .position({ x: textCX - size / 2, y: textCY - size / 2 + TEXT_VERTICAL_OFFSET })
       .plainText(text)
       .textAlign("CENTER").textAlignVertical("MIDDLE")
       .fontSize(fontSize).fontFamily(FONT).textType("PLAIN")
@@ -317,6 +325,18 @@ function* inj_original_texts(
   }
 }
 
+// Helper: returns text width for a string written in a specific size and font.
+const canvas = document.createElement('canvas');
+const context = canvas.getContext('2d');
+
+function getTextWidth(text: string, font: string) {
+  if (!context) {
+    throw new Error("Canvas 2D context is not supported.");
+  }
+  context.font = font; // e.g., "16px Roboto, sans-serif"
+  return context.measureText(text).width;
+}
+
 export function buildConditionItems(
   image: Image,
   sceneDpi: number,
@@ -340,8 +360,8 @@ export function buildConditionItems(
 
   for (let i = 0; i < bubbles.length; i++) {
     const { text, color } = bubbles[i];
-    const textWidth = buildText().plainText(text).width("AUTO").build().text.width;
-    const bubbleWidth = Math.min(text.length * 5 + BUBBLE_PADDING_X * 2, tokenWidth);
+    const textWidth = getTextWidth(text, `${BUBBLE_FONT_SIZE} ${FONT}`);
+    const bubbleWidth = Math.min(textWidth + BUBBLE_PADDING_X, tokenWidth);
 
     if (i > 0 && currentX + bubbleWidth > baseX + tokenWidth) {
       currentX = baseX;
