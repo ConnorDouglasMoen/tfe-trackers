@@ -9,7 +9,6 @@ import {
   STRAIN_MAX,
   getActiveData,
   setActiveData,
-  getActiveData as getActive,
 } from "../characterDataHelpers";
 import { getTokenRecordFromItem, writeTokenRecordToItem } from "../itemMetadataHelpers";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
