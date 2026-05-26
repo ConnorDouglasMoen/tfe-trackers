@@ -262,7 +262,10 @@ TODO / OPEN ITEMS
 - Tune PLAYER_MENU_HEIGHT and GM_MENU_HEIGHT in background.ts once
   confirmed in OBR
 - Consider a "Reset token data" GM button
-- GitHub URL in Action.tsx is a placeholder
 - Appearance pass pending
-- Verify public/ SVG assets: tales-from-elsewhere-logo.svg and
-  tfe-cowboy.svg must exist for manifest.json to resolve correctly
+- Add token name as bubble above token
+- Establish a DEV environment manifest.json file
+- Add On-Map Display sizing features within Action panel.
+- Add button to remove all TFE Tracker data from token (removing On-Map Display items)
+- Add User Guide
+- Change 'location' terminology to 'description' for injuries

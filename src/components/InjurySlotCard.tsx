@@ -100,7 +100,7 @@ export default function InjurySlotCard({
         <TextInput
           value={slot.location}
           onConfirm={(v) => onUpdate({ location: v })}
-          placeholder="Location (e.g. Left Arm, Bulk, etc.)"
+          placeholder="Description (e.g. Shot in the Leg)"
           className="flex-1"
         />
         {slot.location !== "" && (
