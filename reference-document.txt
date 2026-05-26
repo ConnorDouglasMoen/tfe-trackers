@@ -186,6 +186,18 @@ DECISIONS MADE
   null = inherit from scene; non-null = override for that token only.
   resolveDisplaySettings() merges scene + token overrides before building map items.
 - Bubble text width measured via canvas.measureText (not estimated).
+- Tracked Token IDs stored at: OBR.scene.metadata[getPluginId("trackedTokenIds")]
+  - string[] of OBR item IDs pinned by the GM
+  - Toggled via context menu "Pin to Action Panel" (background.ts onClick)
+  - Unpin button in TrackedTokenRow calls useTrackedTokensStore.untrackToken
+  - Action panel reads list, resolves live Items from useOwlbearStore.items
+  - Deleted items are filtered out silently (no stale IDs shown)
+- writeTokenRecordToItem(itemId, record) added to itemMetadataHelpers.ts;
+  used by TrackedTokenRow so each row writes directly to its target item
+  without needing or affecting the current selection.
+- TrackedTokenRow re-syncs local record from item prop on each items change
+  so concurrent edits (player context menu + GM Action panel) stay in sync.
+
 - Bubbles render ABOVE token (getTokenTopLeft), not below.
 
 --------------------------------------------------------------------
@@ -198,6 +210,9 @@ src/
   useCharacterDataStore.ts    — Zustand store for TokenRecord
   useSceneDisplayStore.ts     — Zustand store for scene DisplaySettings;
                                 init() wires OBR.scene.onMetadataChange
+  useTrackedTokensStore.ts    — Zustand store for GM-pinned token IDs;
+                                init() wires scene metadata listener;
+                                trackToken/untrackToken write to scene metadata
   useOwlbearStore.ts
   useOwlbearStoreSync.ts
   getPluginId.ts / getTheme.ts / OBRThemeProvider.tsx
@@ -220,9 +235,11 @@ src/
 
   action/
     action.html / main.tsx / App.tsx
-    Action.tsx                — GM-only scene-level display settings:
-                                Show Strain, Conditions & Complications toggle,
-                                Injuries segmented (All / Filled / None)
+    Action.tsx                — GM-only: Tracked Tokens list at top,
+                                then On-Map Display settings (scene-level)
+    TrackedTokenRow.tsx       — collapsible per-token editor row;
+                                manages own TokenRecord state;
+                                writes to OBR by item ID (not selection)
 
   components/
     PartiallyControlledInput.tsx / TextInput.tsx / ToggleButton.tsx

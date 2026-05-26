@@ -1,23 +1,72 @@
 import { useRef, useEffect } from "react";
+import { Item } from "@owlbear-rodeo/sdk";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useSceneDisplayStore } from "../useSceneDisplayStore";
+import { useTrackedTokensStore } from "../useTrackedTokensStore";
+import { TrackedTokenRow } from "./TrackedTokenRow";
+import { getTokenRecordFromItem } from "../itemMetadataHelpers";
 import OBR from "@owlbear-rodeo/sdk";
 
 /**
  * Action panel content — shown when a scene is open.
  *
- * GM-only: On-Map Display settings (scene-level, affects all participants).
+ * GM-only: Tracked Tokens list (per-token editing) at top,
+ * followed by On-Map Display settings (scene-level).
  * Players see a notice that GM access is required.
  */
 export default function Action(): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
   const role = useOwlbearStore((state) => state.role);
+  const items = useOwlbearStore((state) => state.items);
   const settings = useSceneDisplayStore((state) => state.settings);
   const setSettings = useSceneDisplayStore((state) => state.setSettings);
   const initSceneDisplay = useSceneDisplayStore((state) => state.init);
+  const trackedTokenIds = useTrackedTokensStore((state) => state.trackedTokenIds);
+  const initTrackedTokens = useTrackedTokensStore((state) => state.init);
 
-  // Wire up scene metadata listener once.
-  useEffect(() => { initSceneDisplay(); }, []);
+  // Wire up scene metadata listeners once.
+  useEffect(() => {
+    initSceneDisplay();
+    return initTrackedTokens();
+  }, []);
+
+  // Resolve live Item objects for pinned token IDs.
+  // Filters out IDs whose items have been deleted from the scene.
+  const trackedItems = trackedTokenIds
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is NonNullable<typeof item> => item !== undefined);
+
+  // Build display names: prefer the token's stored alias over its OBR item name.
+  // If multiple tokens share the same resolved base name, append a 1-based
+  // numeric suffix to each duplicate (e.g. "Goblin 1", "Goblin 2").
+  const displayNames: Map<string, string> = (() => {
+    const result = new Map<string, string>();
+    // Resolve base name for each item: alias > item.name > fallback.
+    const baseName = (item: Item) => {
+      const alias = getTokenRecordFromItem(item).displayAlias;
+      return (alias?.trim() || item.name.trim()) || `Token ${item.id.slice(0, 6)}`;
+    };
+    // Count occurrences of each base name.
+    const nameCounts = new Map<string, number>();
+    for (const item of trackedItems) {
+      const base = baseName(item);
+      nameCounts.set(base, (nameCounts.get(base) ?? 0) + 1);
+    }
+    // Assign suffixes only where names collide.
+    const nameIndex = new Map<string, number>();
+    for (const item of trackedItems) {
+      const base = baseName(item);
+      const count = nameCounts.get(base) ?? 1;
+      if (count > 1) {
+        const idx = (nameIndex.get(base) ?? 0) + 1;
+        nameIndex.set(base, idx);
+        result.set(item.id, `${base} ${idx}`);
+      } else {
+        result.set(item.id, base);
+      }
+    }
+    return result;
+  })();
 
   // Resize the action popover dynamically to fit content.
   const divRef = useRef<HTMLDivElement>(null);
@@ -77,7 +126,39 @@ export default function Action(): React.JSX.Element {
         {role === "GM" ? (
           <div className="flex flex-col gap-3">
 
-            {/* On-Map Display settings */}
+            {/* ── Tracked Tokens ──────────────────────────────────────── */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
+                Tracked Tokens
+              </h2>
+              {trackedItems.length > 0 && (
+                <span className="text-xs text-text-disabled dark:text-text-disabled-dark">
+                  {trackedItems.length} pinned
+                </span>
+              )}
+            </div>
+
+            {trackedItems.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {trackedItems.map((item) => (
+                  <TrackedTokenRow
+                    key={item.id}
+                    item={item}
+                    displayName={displayNames.get(item.id) ?? item.name}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
+                Right-click a token and choose{" "}
+                <span className="font-semibold">Pin to Action Panel</span> to
+                track it here.
+              </p>
+            )}
+
+            <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
+
+            {/* ── On-Map Display settings ──────────────────────────────── */}
             <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
               On-Map Display
             </h2>
@@ -135,12 +216,16 @@ export default function Action(): React.JSX.Element {
 
         <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
         <a
-          href="https://discord.gg/QVCEFhd7"
+          href="https://github.com/"
           target="_blank"
           rel="noreferrer"
           className="text-xs text-text-secondary underline hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
+          onClick={(e) => {
+            e.preventDefault();
+            void OBR.browser.openUrl("https://github.com/");
+          }}
         >
-          Report a bug
+          Report a bug / GitHub
         </a>
       </div>
     </div>

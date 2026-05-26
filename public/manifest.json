@@ -6,7 +6,7 @@
   "homepage_url": "https://github.com/ConnorDouglasMoen/tfe-trackers",
   "icon": "/tales-from-elsewhere-logo.svg",
   "background_url": "/src/background/background.html",
-  "description": "Strain, Injury, and Condition tracker for Tales from Elsewhere",
+  "description": "Strain, Injury, and Condition tracker for the Tales from Elsewhere RPG game system.",
   "action": {
     "title": "TFE Trackers",
     "icon": "/tfe-cowboy.svg",

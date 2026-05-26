@@ -48,6 +48,12 @@ export type TokenRecord = {
   other: CharacterData;
   /** Per-token display overrides; null fields fall back to scene DisplaySettings. */
   displayOverrides: TokenDisplayOverrides;
+  /**
+   * Optional alias shown in the Action panel tracked-tokens list.
+   * Does not affect the OBR item name — only visible to the GM in the Action panel.
+   * Undefined means fall back to the item's actual OBR name.
+   */
+  displayAlias?: string;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -243,6 +249,7 @@ export function migrateToTokenRecord(raw: unknown): TokenRecord {
       survivor: migrateCharacterData(raw.survivor),
       other: migrateCharacterData(raw.other),
       displayOverrides: migrateDisplayOverrides((raw as TokenRecord).displayOverrides),
+      displayAlias: (raw as TokenRecord).displayAlias,
     };
   }
   if (isCharacterData(raw)) {

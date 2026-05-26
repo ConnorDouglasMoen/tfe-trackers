@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Item } from "@owlbear-rodeo/sdk";
+import { useState, useEffect, useCallback, useRef } from "react";
+import OBR, { Item } from "@owlbear-rodeo/sdk";
 import {
   TokenRecord,
   CharacterData,
@@ -128,26 +128,40 @@ function ConditionsSection({
  * OBR item by ID (not via selection), so the GM can edit any token without
  * needing to select it first.
  *
- * The row header shows the token's name and an unpin button.
+ * The row header shows the token's name (with a numeric suffix when there are
+ * duplicates), a "center on token" button, and an unpin button.
  * The body is an inline version of the TokenMenu editor (strain, injuries,
  * conditions) without the display-override section.
  */
 export function TrackedTokenRow({
   item,
+  displayName,
 }: {
   item: Item;
+  /** Pre-computed display name with optional numeric suffix for deduplication. */
+  displayName: string;
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [record, setRecord] = useState<TokenRecord>(() =>
     getTokenRecordFromItem(item),
   );
   const untrackToken = useTrackedTokensStore((state) => state.untrackToken);
 
-  // Keep local record in sync when the underlying OBR item changes externally
-  // (e.g. a player edits the token via the context menu while the row is open).
+  // Keep local record in sync when the underlying OBR item changes externally.
   useEffect(() => {
     setRecord(getTokenRecordFromItem(item));
   }, [item]);
+
+  // Focus the name input whenever edit mode is entered.
+  useEffect(() => {
+    if (isEditingName) {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    }
+  }, [isEditingName]);
 
   // Derive active CharacterData from the record.
   const data: CharacterData = getActiveData(record);
@@ -168,7 +182,7 @@ export function TrackedTokenRow({
     [item.id],
   );
 
-  /** Apply a patch at the TokenRecord level (e.g. characterType). */
+  /** Apply a patch at the TokenRecord level (e.g. characterType, displayAlias). */
   const applyRecordPatch = useCallback(
     (patch: Partial<TokenRecord>) => {
       setRecord((prev) => {
@@ -179,6 +193,24 @@ export function TrackedTokenRow({
     },
     [item.id],
   );
+
+  /** Enter name-edit mode, pre-filling with the current alias or item name. */
+  const startEditingName = (e: React.MouseEvent) => {
+    e.stopPropagation(); // don't toggle the row collapse
+    const currentAlias = record.displayAlias?.trim() ?? "";
+    setNameInput(currentAlias || item.name);
+    setIsEditingName(true);
+  };
+
+  /** Commit the edited alias — empty or matching item name clears the alias. */
+  const commitName = () => {
+    const trimmed = nameInput.trim();
+    const newAlias = trimmed === "" || trimmed === item.name ? undefined : trimmed;
+    applyRecordPatch({ displayAlias: newAlias });
+    setIsEditingName(false);
+  };
+
+  const cancelEditName = () => setIsEditingName(false);
 
   // ── Derived injury helpers ─────────────────────────────────────────────────
 
@@ -198,55 +230,142 @@ export function TrackedTokenRow({
     applyDataPatch({ seriousInjuries: updated });
   };
 
-  // ── Token name for the row header ─────────────────────────────────────────
-
-  // OBR items have a `name` field on the top-level object.
-  const tokenName =
-    (item as unknown as { name?: string }).name?.trim() ||
-    `Token ${item.id.slice(0, 6)}`;
-
   // ── Render ────────────────────────────────────────────────────────────────
+
+  /**
+   * Animate the viewport to center on this token at the current zoom level.
+   *
+   * OBR viewport transform: screen = world * scale + position
+   * To place world point P at screen center (w/2, h/2):
+   *   position.x = w/2 - P.x * scale
+   *   position.y = h/2 - P.y * scale
+   */
+  const handleCenterOnToken = async () => {
+    const [scale, width, height] = await Promise.all([
+      OBR.viewport.getScale(),
+      OBR.viewport.getWidth(),
+      OBR.viewport.getHeight(),
+    ]);
+    const pos = item.position;
+    await OBR.viewport.animateTo({
+      position: {
+        x: width / 2 - pos.x * scale,
+        y: height / 2 - pos.y * scale,
+      },
+      scale,
+    });
+  };
 
   return (
     <div className="rounded-lg border border-white/10 bg-black/5 dark:bg-white/5">
-      {/* ── Row header: toggle open/close + token name + unpin button ── */}
-      <div className="flex items-center justify-between px-2 py-1.5">
-        {/* Chevron + name */}
-        <button
-          onClick={() => setIsOpen((v) => !v)}
-          className="flex flex-1 items-center gap-1.5 text-left text-sm font-semibold text-text-primary dark:text-text-primary-dark"
-          aria-expanded={isOpen}
-        >
-          {/* Chevron rotates 90° when open */}
-          <svg
-            viewBox="0 0 16 16"
-            width="12"
-            height="12"
-            aria-hidden="true"
-            className={`shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
-          >
-            <path d="M5 3l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="truncate">{tokenName}</span>
-          {/* Dim type badge */}
-          <span className="ml-1 rounded px-1 py-0.5 text-2xs font-normal text-text-disabled dark:text-text-disabled-dark capitalize">
-            {data.characterType}
-          </span>
-        </button>
+      {/* ── Row header: collapse toggle / name edit + center + unpin ── */}
+      <div className="flex items-center gap-1 px-2 py-1.5">
 
-        {/* Unpin button */}
-        <button
-          onClick={() => void untrackToken(item.id)}
-          aria-label={`Unpin ${tokenName} from Action panel`}
-          title="Unpin from Action panel"
-          className="ml-2 shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
-        >
-          {/* Pin-with-slash icon (simple SVG) */}
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-            <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <path d="M6 2l4 4-2 2-4-4z M8 10l-3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        {isEditingName ? (
+          /* ── Name edit mode ── */
+          <>
+            <input
+              ref={nameInputRef}
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                if (e.key === "Escape") { e.preventDefault(); cancelEditName(); }
+              }}
+              onBlur={commitName}
+              className="min-w-0 flex-1 rounded bg-black/20 px-1.5 py-0.5 text-sm font-semibold text-text-primary outline-none dark:bg-white/10 dark:text-text-primary-dark"
+              aria-label="Edit token label"
+            />
+            {/* Confirm button */}
+            <button
+              onMouseDown={(e) => { e.preventDefault(); commitName(); }}
+              aria-label="Confirm name"
+              title="Confirm"
+              className="shrink-0 rounded p-0.5 text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="2,8 6,12 14,4" />
+              </svg>
+            </button>
+            {/* Cancel button */}
+            <button
+              onMouseDown={(e) => { e.preventDefault(); cancelEditName(); }}
+              aria-label="Cancel edit"
+              title="Cancel"
+              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </>
+        ) : (
+          /* ── Normal mode ── */
+          <>
+            {/* Chevron + name (collapse toggle) */}
+            <button
+              onClick={() => setIsOpen((v) => !v)}
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-text-primary dark:text-text-primary-dark"
+              aria-expanded={isOpen}
+            >
+              <svg
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                aria-hidden="true"
+                className={`shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+              >
+                <path d="M5 3l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="truncate">{displayName}</span>
+              <span className="ml-1 shrink-0 rounded px-1 py-0.5 text-2xs font-normal text-text-disabled dark:text-text-disabled-dark capitalize">
+                {data.characterType}
+              </span>
+            </button>
+
+            {/* Edit name button */}
+            <button
+              onClick={startEditingName}
+              aria-label={`Edit label for ${displayName}`}
+              title="Edit label"
+              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 2l3 3-8 8H3v-3l8-8z" />
+              </svg>
+            </button>
+
+            {/* Center-on-token button */}
+            <button
+              onClick={() => void handleCenterOnToken()}
+              aria-label={`Center view on ${displayName}`}
+              title="Center view on token"
+              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <circle cx="8" cy="8" r="3" />
+                <line x1="8" y1="1" x2="8" y2="4" />
+                <line x1="8" y1="12" x2="8" y2="15" />
+                <line x1="1" y1="8" x2="4" y2="8" />
+                <line x1="12" y1="8" x2="15" y2="8" />
+              </svg>
+            </button>
+
+            {/* Unpin button */}
+            <button
+              onClick={() => void untrackToken(item.id)}
+              aria-label={`Unpin ${displayName} from Action panel`}
+              title="Unpin from Action panel"
+              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M6 2l4 4-2 2-4-4z M8 10l-3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* ── Expanded body: inline token editor ─────────────────────── */}
