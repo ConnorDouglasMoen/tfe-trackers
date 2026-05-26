@@ -216,16 +216,12 @@ export default function Action(): React.JSX.Element {
 
         <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
         <a
-          href="https://github.com/"
+          href="https://discord.gg/QVCEFhd7"
           target="_blank"
           rel="noreferrer"
           className="text-xs text-text-secondary underline hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-          onClick={(e) => {
-            e.preventDefault();
-            void OBR.browser.openUrl("https://github.com/");
-          }}
         >
-          Report a bug / GitHub
+          Report a bug
         </a>
       </div>
     </div>
