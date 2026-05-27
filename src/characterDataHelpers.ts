@@ -18,6 +18,10 @@ export type DisplaySettings = {
   injuryDisplay: "all" | "filled-only" | "none";
   /** Whether to show the custom displayName bubble on the map. */
   showName: boolean;
+  /** Scales strain boxes and injury circles. */
+  markerScale: number;
+  /** Scales condition, complication, and name bubbles. */
+  textScale: number;
 };
 
 /**
@@ -74,6 +78,8 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showConditions: true,
   injuryDisplay: "all", // show all injury circles by default
   showName: true,
+  markerScale: 1,
+  textScale: 1,
 };
 
 /** Default overrides — all null means "use scene settings". */
@@ -97,6 +103,8 @@ export function resolveDisplaySettings(
     showConditions: overrides.showConditions ?? scene.showConditions,
     injuryDisplay: overrides.injuryDisplay ?? scene.injuryDisplay,
     showName: overrides.showName ?? scene.showName,
+    markerScale: scene.markerScale,
+    textScale: scene.textScale,
   };
 }
 

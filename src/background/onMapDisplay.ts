@@ -97,7 +97,7 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   const { showStrain, showConditions, injuryDisplay } = effectiveSettings;
 
   if (showStrain) {
-    buildStrainItems(image, sceneDpi, data, addItems);
+    buildStrainItems(image, sceneDpi, data, effectiveSettings, addItems);
   }
 
   // Injury circles — skipped entirely when injuryDisplay is "none".
@@ -120,6 +120,7 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   if (hasUntreatedComplications || hasConditions) {
     buildConditionItems(
       image, sceneDpi, data,
+      effectiveSettings,
       addItems,
       showConditions,
     );
@@ -127,7 +128,7 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
 
   // Name bubble — gated by resolved showName setting.
   if (record.displayName !== "" && effectiveSettings.showName) {
-    buildNameBubble(image, sceneDpi, record.displayName, addItems);
+    buildNameBubble(image, sceneDpi, record.displayName, effectiveSettings, addItems);
   }
 }
 

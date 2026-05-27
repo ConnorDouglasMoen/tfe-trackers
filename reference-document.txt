@@ -105,12 +105,16 @@ type DisplaySettings = {
   showConditions: boolean;  // also gates complication bubbles on map
   // "all" = empty + filled circles; "filled-only" = filled only; "none" = hide row
   injuryDisplay: "all" | "filled-only" | "none";
+  showName: boolean;        // gates displayName bubble on map
+  markerScale: number;      // scales strain boxes + injury circles
+  textScale: number;        // scales condition/complication/name bubbles
 };
 
 Stored at: OBR.scene.metadata[getPluginId("sceneDisplaySettings")]
 Written by: GM only (Action panel)
 Read by: all participants via OBR.scene.onMetadataChange
-Defaults: showStrain:true, showConditions:true, injuryDisplay:"all"
+Defaults: showStrain:true, showConditions:true, injuryDisplay:"all",
+          showName:true, markerScale:1, textScale:1
 
 --- Per-token: TokenDisplayOverrides ---
 
@@ -143,6 +147,12 @@ Layout:
   Bubble row:           rendered ABOVE token (getTokenTopLeft)
     - Bubbles wrap to fit token width, left-aligned.
     - Width measured via canvas.measureText for accurate sizing.
+    - Text bubble sizing comes from DisplaySettings.textScale.
+  Name bubble:          rendered BELOW token, right-aligned near injury row
+    - Uses TokenRecord.displayName.
+    - Visibility gated by resolved DisplaySettings.showName.
+    - Text/height sizing comes from DisplaySettings.textScale.
+    - Vertical offset follows markerScale so it stays aligned with injury row.
 
   Row 1 (below): Strain boxes (13px squares, red; dark red X when filled)
   Row 2 (below): Injury circles (14px, color-coded by severity)
@@ -161,6 +171,19 @@ Injury circle colors:
   Serious  — fill #d68e68, stroke #a44f27
   Critical — fill #db7777, stroke #94272c
   Lethal   — fill #7c4291, stroke #501e64
+
+Sizing:
+  Scene-level controls live in Action.tsx as segmented S/M/L/XL controls:
+    S = 0.75, M = 1, L = 1.25, XL = 1.5
+  markerScale:
+    - Applies to strain box size/gap/stroke/font.
+    - Applies to injury circle size/gap/stroke/font.
+  textScale:
+    - Applies to condition/complication bubble height, padding, radius,
+      stroke, font, and wrapping increments.
+    - Applies to name bubble height, padding, radius, stroke, and font.
+  onMapHelpers clamps both scale values to 0.5-2 as a defensive guard
+  against malformed scene metadata.
 
 DPI: fetched via OBR.scene.grid.getDpi() on each scene ready; cached
 as module-level `sceneDpi` and passed to all builder helpers.
@@ -185,7 +208,8 @@ DECISIONS MADE
 - Separate embed heights for player (420px) and GM (560px).
 - Token overrides (TokenDisplayOverrides) stored in TokenRecord.displayOverrides.
   null = inherit from scene; non-null = override for that token only.
-  resolveDisplaySettings() merges scene + token overrides before building map items.
+  resolveDisplaySettings() merges scene + token visibility overrides before building map items.
+  markerScale/textScale are scene-level only and are not token-overridable.
 - Bubble text width measured via canvas.measureText (not estimated).
 - Tracked Token IDs stored at: OBR.scene.metadata[getPluginId("trackedTokenIds")]
   - string[] of OBR item IDs pinned by the GM
@@ -225,7 +249,7 @@ src/
                                 calls initOnMapDisplay()
     mathHelpers.ts
     onMapDisplay.ts           — fetches DPI; reads scene DisplaySettings
-    onMapHelpers.ts           — builders; injuryDisplay from DisplaySettings
+    onMapHelpers.ts           — builders; injuryDisplay + sizing from DisplaySettings
     onMapItemIds.ts
 
   tokenMenu/
@@ -237,7 +261,8 @@ src/
   action/
     action.html / main.tsx / App.tsx
     Action.tsx                — GM-only: Tracked Tokens list at top,
-                                then On-Map Display settings (scene-level)
+                                then On-Map Display settings (scene-level),
+                                including marker/text sizing controls
     TrackedTokenRow.tsx       — collapsible per-token editor row;
                                 manages own TokenRecord state;
                                 writes to OBR by item ID (not selection)
@@ -262,11 +287,67 @@ TODO / OPEN ITEMS
 - Delete src/displaySettings/ directory manually (still present)
 - Tune PLAYER_MENU_HEIGHT and GM_MENU_HEIGHT in background.ts once
   confirmed in OBR
-- Consider a "Reset token data" GM button
 - Appearance pass pending
-- 'Add token name editor to token menu, and display token name as a text bubble (like conditions) on the bottom right corner of the token (level with injury circles)'
 - Establish a DEV environment manifest.json file
-- Add On-Map Display sizing features within Action panel.
-- Add button to remove all TFE Tracker data from token (removing On-Map Display items)
 - Add User Guide
 - Consider using Red's Wound Markers for injuries.
+- Configure Player-Owned token tracking in the action panel, when room permissions allow for player ownership
+
+Quality / functionality backlog:
+- Extract a shared TokenEditor component used by both TokenMenu.tsx and
+  TrackedTokenRow.tsx. Keep wrappers responsible for persistence target
+  (selection vs item ID), but share the Survivor/Other toggle, strain editor,
+  injury editor, conditions editor, and display-name editor to prevent behavior
+  drift between the context menu and GM Action panel.
+- Centralize token-record mutation helpers. Move repeated operations such as
+  clamping strain, adding/removing conditions, updating injury slots, switching
+  active type, and normalizing displayName into pure helper functions with unit
+  tests. Stores/components should call the same helpers instead of duplicating
+  patch logic.
+- Add automated tests for characterDataHelpers migration and display-setting
+  resolution. Cover legacy CharacterData blobs, legacy string complications,
+  legacy location -> description migration, missing displayOverrides,
+  displayAlias -> displayName migration, and markerScale/textScale defaults.
+- Add automated tests for on-map helper data behavior that can be tested without
+  OBR rendering. Prioritize injury slot resolution, empty-vs-filled injury
+  filtering, complication/condition deduplication, severity color precedence,
+  and defensive scale clamping.
+- Add write failure handling for OBR metadata updates. Current writes are mostly
+  optimistic fire-and-forget; add user-visible failure state or retry behavior
+  for TokenMenu, TrackedTokenRow, scene display settings, and tracked-token
+  pin/unpin writes.
+- Prevent stale tracked-token IDs from accumulating in scene metadata. The
+  Action panel currently filters deleted items out of the UI; add a GM-side
+  cleanup pass or explicit "Clean missing tokens" action that removes deleted
+  IDs from trackedTokenIds.
+- Make context-menu pin state explicit. Replace the single "Pin to Action Panel"
+  toggle label with distinct Pin/Unpin menu entries or metadata-aware labels
+  once OBR filtering supports it cleanly, so GMs can tell the current state
+  before clicking.
+- Add a bulk GM utility section for tracked tokens. Candidate actions:
+  unpin all missing tokens, unpin all tracked tokens, clear TFE data from all
+  tracked tokens after confirmation, and refresh/rebuild on-map attachments.
+- Add a DEV manifest/build flow. Generate or copy a development manifest with
+  localhost URLs and a production manifest with packaged URLs so local OBR
+  testing does not require manual manifest edits.
+- Add an in-app quick reference or linked user guide covering Survivor vs Other,
+  injury slots, complications vs conditions, treated behavior, display overrides,
+  tracked tokens, and on-map display sizing.
+- Replace hand-drawn SVG button icons in React components with a shared icon
+  component or icon library. This will reduce duplicated inline SVGs and make
+  hover/disabled/accessibility behavior consistent across TokenMenu,
+  TrackedTokenRow, InjurySlotCard, and Conditions lists.
+- Review accessibility for compact controls. Add aria-label/title coverage for
+  segmented controls, size controls, injury slot steppers, strain boxes, and
+  icon buttons; ensure keyboard operation works in both the context menu and
+  Action panel.
+- Add visual QA coverage for the Action panel and token menu. Use a local dev
+  server and browser screenshots at narrow/wide sizes to catch text overflow,
+  cramped segmented controls, and regressions from the appearance pass.
+- Add performance guardrails for on-map redraws. Consider debouncing rapid item
+  metadata changes, avoiding full scene redraws when only unrelated scene
+  metadata changes, and documenting/limiting attachment counts for heavily
+  populated scenes.
+- Consider per-token size overrides only if playtesting shows scene-wide sizing
+  is insufficient. If added, extend TokenDisplayOverrides with nullable
+  markerScale/textScale and keep scene defaults as the fallback.

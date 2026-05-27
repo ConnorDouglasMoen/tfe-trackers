@@ -86,6 +86,44 @@ export function getActiveDataFromItem(item: Item): CharacterData {
 }
 
 /////////////////////////////////////////////////////////////////////
+// Clear all TFE data from a token
+/////////////////////////////////////////////////////////////////////
+
+/**
+ * Remove all TFE Tracker metadata keys from a specific item and delete every
+ * on-map attachment that belongs to it.  GM-only: called from the context menu
+ * "Clear TFE Data" action in background.ts.
+ */
+export async function clearTokenData(itemId: string): Promise<void> {
+  const items = await OBR.scene.items.getItems([itemId]);
+  if (items.length === 0) {
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
+  // Strip both the current tokenRecord key and the legacy characterData key,
+  // as well as the hidden flag, so the token is fully reset.
+  const keysToDelete = [
+    getPluginId(TOKEN_RECORD_METADATA_ID),
+    getPluginId("characterData"),        // legacy key
+    getPluginId(HIDDEN_METADATA_ID),
+  ];
+
+  OBR.scene.items.updateItems(items, (mutableItems) => {
+    for (const item of mutableItems) {
+      for (const key of keysToDelete) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete item.metadata[key];
+      }
+    }
+  });
+
+  // Remove every on-map attachment created by the on-map display system.
+  const { getAllAttachmentIds } = await import("./background/onMapItemIds");
+  const attachmentIds = getAllAttachmentIds(itemId);
+  await OBR.scene.local.deleteItems(attachmentIds);
+}
+
+/////////////////////////////////////////////////////////////////////
 // Hidden flag
 /////////////////////////////////////////////////////////////////////
 

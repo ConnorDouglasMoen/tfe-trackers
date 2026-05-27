@@ -1,6 +1,7 @@
 import OBR from "@owlbear-rodeo/sdk";
 import { getPluginId } from "../getPluginId";
 import { HIDDEN_METADATA_ID } from "../characterDataHelpers";
+import { clearTokenData } from "../itemMetadataHelpers";
 import { initOnMapDisplay } from "./onMapDisplay";
 
 /** Scene metadata key for pinned token IDs — must match useTrackedTokensStore. */
@@ -129,6 +130,32 @@ OBR.onReady(async () => {
       }
 
       await OBR.scene.setMetadata({ [key]: next });
+    },
+  });
+
+  // GM-only context menu: wipe all TFE Tracker data from a token and remove
+  // its on-map attachments, resetting it to a clean slate.
+  OBR.contextMenu.create({
+    id: getPluginId("clear-token-data"),
+    icons: [
+      {
+        icon: menuIcon,
+        label: "Clear TFE Data",
+        filter: {
+          every: [
+            { key: "layer", value: "CHARACTER", coordinator: "||" },
+            { key: "layer", value: "MOUNT" },
+            { key: "type", value: "IMAGE" },
+          ],
+          roles: ["GM"],
+          max: 1,
+        },
+      },
+    ],
+    onClick: async (context) => {
+      const itemId = context.items[0]?.id;
+      if (itemId === undefined) return;
+      await clearTokenData(itemId);
     },
   });
 

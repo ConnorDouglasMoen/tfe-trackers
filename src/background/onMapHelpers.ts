@@ -43,6 +43,34 @@ const INJURY_COLORS = {
 } as const;
 type InjurySeverity = keyof typeof INJURY_COLORS;
 
+function clampScale(scale: number): number {
+  return Number.isFinite(scale) ? Math.min(Math.max(scale, 0.5), 2) : 1;
+}
+
+function getMarkerLayout(displaySettings: DisplaySettings) {
+  const scale = clampScale(displaySettings.markerScale);
+  return {
+    boxSize: BOX_SIZE * scale,
+    boxGap: BOX_GAP * scale,
+    circleSize: CIRCLE_SIZE * scale,
+    circleGap: CIRCLE_GAP * scale,
+    rowGap: ROW_GAP * scale,
+    strokeWidth: 1.5 * scale,
+  };
+}
+
+function getBubbleLayout(displaySettings: DisplaySettings) {
+  const scale = clampScale(displaySettings.textScale);
+  return {
+    height: BUBBLE_HEIGHT * scale,
+    paddingX: BUBBLE_PADDING_X * scale,
+    fontSize: BUBBLE_FONT_SIZE * scale,
+    rowGap: ROW_GAP * scale,
+    cornerRadius: 2 * scale,
+    strokeWidth: 1 * scale,
+  };
+}
+
 // Severity rank for dedup: higher = wins the color. Conditions have rank -1.
 const SEVERITY_RANK: Record<InjurySeverity, number> = {
   serious: 0,
@@ -136,13 +164,15 @@ export function buildStrainItems(
   image: Image,
   sceneDpi: number,
   data: CharacterData,
+  displaySettings: DisplaySettings,
   addItems: Item[],
 ): void {
   const origin = getTokenBottomLeft(image, sceneDpi);
-  const rowY = origin.y - (BOX_SIZE + ROW_GAP);
+  const layout = getMarkerLayout(displaySettings);
+  const rowY = origin.y - (layout.boxSize + layout.rowGap);
 
   for (let i = 0; i < data.strainMax; i++) {
-    const cx = origin.x + ROW_GAP + i * (BOX_SIZE + BOX_GAP);
+    const cx = origin.x + layout.rowGap + i * (layout.boxSize + layout.boxGap);
     const filled = i < data.strainCurrent;
 
     buildCenteredShapeWithText({
@@ -150,15 +180,15 @@ export function buildStrainItems(
       shapeId: getStrainBoxBgId(image.id, i),
       textId: getStrainBoxXId(image.id, i),
       cx, cy: rowY,
-      size: BOX_SIZE,
+      size: layout.boxSize,
       shapeType: "RECTANGLE",
       fillColor: filled ? "#b42828" : "#1a0000",
       fillOpacity: filled ? ROW_OPACITY : 0.4,
       strokeColor: filled ? "#b42828" : "#d25050",
       strokeOpacity: ROW_OPACITY,
-      strokeWidth: 1.5,
+      strokeWidth: layout.strokeWidth,
       text: filled ? "✕" : "",
-      fontSize: BOX_SIZE - 2,
+      fontSize: layout.boxSize - 2,
       textColor: "#500a0a",
       textOpacity: filled ? 1 : 0,
       fontWeight: 700,
@@ -212,7 +242,8 @@ export function buildInjuryItems(
   addItems: Item[],
 ): void {
   const origin = getTokenBottomLeft(image, sceneDpi);
-  const rowY = origin.y + CIRCLE_SIZE / 2;
+  const layout = getMarkerLayout(displaySettings);
+  const rowY = origin.y + layout.circleSize / 2;
 
   const resolved = resolveInjuries(data);
   const showEmpty = displaySettings.injuryDisplay === "all";
@@ -221,7 +252,7 @@ export function buildInjuryItems(
   for (const inj of resolved) {
     if (inj.isEmpty && !showEmpty) continue;
 
-    const cx = origin.x + ROW_GAP + colIndex * (CIRCLE_SIZE + CIRCLE_GAP) + CIRCLE_SIZE / 2;
+    const cx = origin.x + layout.rowGap + colIndex * (layout.circleSize + layout.circleGap) + layout.circleSize / 2;
     const colors = INJURY_COLORS[inj.severity];
     const icon = inj.injurySlot.treated ? "✓" : inj.isEmpty ? "" : "!";
 
@@ -230,15 +261,15 @@ export function buildInjuryItems(
       shapeId: getInjuryCircleBgId(image.id, inj.slot),
       textId: getInjuryCircleIconId(image.id, inj.slot),
       cx, cy: rowY,
-      size: CIRCLE_SIZE,
+      size: layout.circleSize,
       shapeType: "CIRCLE",
       fillColor: inj.isEmpty ? "#111111" : colors.fill,
       fillOpacity: inj.isEmpty ? 0.35 : ROW_OPACITY,
       strokeColor: colors.stroke,
       strokeOpacity: ROW_OPACITY,
-      strokeWidth: 1.5,
+      strokeWidth: layout.strokeWidth,
       text: icon,
-      fontSize: CIRCLE_SIZE - 5,
+      fontSize: layout.circleSize - 5,
       textColor: "#ffffff",
       textOpacity: ROW_OPACITY,
       fontWeight: 700,
@@ -342,15 +373,17 @@ export function buildConditionItems(
   image: Image,
   sceneDpi: number,
   data: CharacterData,
+  displaySettings: DisplaySettings,
   addItems: Item[],
   showConditions: boolean,
 ): void {
   const origin = getTokenTopLeft(image, sceneDpi);
   const dpiScale = sceneDpi / image.grid.dpi;
   const tokenWidth = image.image.width * dpiScale * Math.abs(image.scale.x);
+  const layout = getBubbleLayout(displaySettings);
 
-  const baseY = origin.y + ROW_GAP;
-  const baseX = origin.x + ROW_GAP;
+  const baseY = origin.y + layout.rowGap;
+  const baseX = origin.x + layout.rowGap;
   let currentX = baseX;
   let currentY = baseY;
   const conicWeight = Math.sqrt(2) / 2;
@@ -359,30 +392,30 @@ export function buildConditionItems(
 
   for (let i = 0; i < bubbles.length; i++) {
     const { text, color } = bubbles[i];
-    const textWidth = getTextWidth(text, `${BUBBLE_FONT_SIZE} ${FONT}`);
-    const bubbleWidth = Math.min(textWidth + BUBBLE_PADDING_X, tokenWidth);
+    const textWidth = getTextWidth(text, `${layout.fontSize}px ${FONT}`);
+    const bubbleWidth = Math.min(textWidth + layout.paddingX * 2, tokenWidth);
 
     if (i > 0 && currentX + bubbleWidth > baseX + tokenWidth) {
       currentX = baseX;
-      currentY += BUBBLE_HEIGHT + 2;
+      currentY += layout.height + layout.rowGap;
     }
 
     addItems.push(
       buildPath()
         .commands([
-          [Command.MOVE, currentX + 2, currentY],
-          [Command.LINE, currentX + bubbleWidth - 2, currentY],
-          [Command.CONIC, currentX + bubbleWidth - 2, currentY + 2, currentX + bubbleWidth, currentY + 2, conicWeight],
-          [Command.LINE, currentX + bubbleWidth, currentY + BUBBLE_HEIGHT - 2],
-          [Command.CONIC, currentX + bubbleWidth - 2, currentY + BUBBLE_HEIGHT - 2, currentX + bubbleWidth - 2, currentY + BUBBLE_HEIGHT, conicWeight],
-          [Command.LINE, currentX + 2, currentY + BUBBLE_HEIGHT],
-          [Command.CONIC, currentX + 2, currentY + BUBBLE_HEIGHT - 2, currentX, currentY + BUBBLE_HEIGHT - 2, conicWeight],
-          [Command.LINE, currentX, currentY + 2],
-          [Command.CONIC, currentX + 2, currentY + 2, currentX + 2, currentY, conicWeight],
+          [Command.MOVE, currentX + layout.cornerRadius, currentY],
+          [Command.LINE, currentX + bubbleWidth - layout.cornerRadius, currentY],
+          [Command.CONIC, currentX + bubbleWidth - layout.cornerRadius, currentY + layout.cornerRadius, currentX + bubbleWidth, currentY + layout.cornerRadius, conicWeight],
+          [Command.LINE, currentX + bubbleWidth, currentY + layout.height - layout.cornerRadius],
+          [Command.CONIC, currentX + bubbleWidth - layout.cornerRadius, currentY + layout.height - layout.cornerRadius, currentX + bubbleWidth - layout.cornerRadius, currentY + layout.height, conicWeight],
+          [Command.LINE, currentX + layout.cornerRadius, currentY + layout.height],
+          [Command.CONIC, currentX + layout.cornerRadius, currentY + layout.height - layout.cornerRadius, currentX, currentY + layout.height - layout.cornerRadius, conicWeight],
+          [Command.LINE, currentX, currentY + layout.cornerRadius],
+          [Command.CONIC, currentX + layout.cornerRadius, currentY + layout.cornerRadius, currentX + layout.cornerRadius, currentY, conicWeight],
           [Command.CLOSE]
         ])
         .fillColor("#1a1a2e").fillOpacity(0.8)
-        .strokeColor(color).strokeOpacity(0.8).strokeWidth(1)
+        .strokeColor(color).strokeOpacity(0.8).strokeWidth(layout.strokeWidth)
         .attachedTo(image.id).layer(ATTACHMENT_LAYER).locked(true)
         .id(getConditionBgId(image.id, i))
         .visible(image.visible)
@@ -395,8 +428,8 @@ export function buildConditionItems(
         .position({ x: currentX, y: currentY - 1 })
         .plainText(text)
         .textAlign("CENTER").textAlignVertical("MIDDLE")
-        .fontSize(BUBBLE_FONT_SIZE).fontFamily(FONT).textType("PLAIN")
-        .height(BUBBLE_HEIGHT).width(bubbleWidth)
+        .fontSize(layout.fontSize).fontFamily(FONT).textType("PLAIN")
+        .height(layout.height).width(bubbleWidth)
         .fontWeight(400).fillColor(color).fillOpacity(0.9)
         .attachedTo(image.id).layer(TEXT_LAYER).locked(true)
         .id(getConditionTextId(image.id, i))
@@ -405,7 +438,7 @@ export function buildConditionItems(
         .build(),
     );
 
-    currentX += bubbleWidth + 2;
+    currentX += bubbleWidth + layout.rowGap;
   }
 }
 
@@ -422,6 +455,7 @@ export function buildNameBubble(
   image: Image,
   sceneDpi: number,
   displayName: string,
+  displaySettings: DisplaySettings,
   addItems: Item[],
 ): void {
   const name = displayName.trim();
@@ -430,34 +464,35 @@ export function buildNameBubble(
   const origin = getTokenBottomLeft(image, sceneDpi);
   const dpiScale = sceneDpi / image.grid.dpi;
   const tokenWidth = image.image.width * dpiScale * Math.abs(image.scale.x);
+  const layout = getBubbleLayout(displaySettings);
 
-  // Same Y as injury circles row.
-  const rowY = origin.y + ROW_GAP;
+  // Keep the name bubble aligned with the marker row even when text size differs.
+  const rowY = origin.y + getMarkerLayout(displaySettings).rowGap;
 
   const color = "#e8d8a0"; // warm parchment — visually distinct from condition/complication bubbles
-  const textWidth = getTextWidth(name, `${BUBBLE_FONT_SIZE}px ${FONT}`);
-  const bubbleWidth = Math.min(textWidth + BUBBLE_PADDING_X * 2 + 4, tokenWidth);
+  const textWidth = getTextWidth(name, `${layout.fontSize}px ${FONT}`);
+  const bubbleWidth = Math.min(textWidth + layout.paddingX * 2 + 4 * clampScale(displaySettings.textScale), tokenWidth);
 
   // Pin right edge to token right edge.
-  const bubbleX = origin.x + tokenWidth - bubbleWidth - ROW_GAP;
+  const bubbleX = origin.x + tokenWidth - bubbleWidth - layout.rowGap;
   const conicWeight = Math.sqrt(2) / 2;
 
   addItems.push(
     buildPath()
       .commands([
-        [Command.MOVE, bubbleX + 2, rowY],
-        [Command.LINE, bubbleX + bubbleWidth - 2, rowY],
-        [Command.CONIC, bubbleX + bubbleWidth - 2, rowY + 2, bubbleX + bubbleWidth, rowY + 2, conicWeight],
-        [Command.LINE, bubbleX + bubbleWidth, rowY + BUBBLE_HEIGHT - 2],
-        [Command.CONIC, bubbleX + bubbleWidth - 2, rowY + BUBBLE_HEIGHT - 2, bubbleX + bubbleWidth - 2, rowY + BUBBLE_HEIGHT, conicWeight],
-        [Command.LINE, bubbleX + 2, rowY + BUBBLE_HEIGHT],
-        [Command.CONIC, bubbleX + 2, rowY + BUBBLE_HEIGHT - 2, bubbleX, rowY + BUBBLE_HEIGHT - 2, conicWeight],
-        [Command.LINE, bubbleX, rowY + 2],
-        [Command.CONIC, bubbleX + 2, rowY + 2, bubbleX + 2, rowY, conicWeight],
+        [Command.MOVE, bubbleX + layout.cornerRadius, rowY],
+        [Command.LINE, bubbleX + bubbleWidth - layout.cornerRadius, rowY],
+        [Command.CONIC, bubbleX + bubbleWidth - layout.cornerRadius, rowY + layout.cornerRadius, bubbleX + bubbleWidth, rowY + layout.cornerRadius, conicWeight],
+        [Command.LINE, bubbleX + bubbleWidth, rowY + layout.height - layout.cornerRadius],
+        [Command.CONIC, bubbleX + bubbleWidth - layout.cornerRadius, rowY + layout.height - layout.cornerRadius, bubbleX + bubbleWidth - layout.cornerRadius, rowY + layout.height, conicWeight],
+        [Command.LINE, bubbleX + layout.cornerRadius, rowY + layout.height],
+        [Command.CONIC, bubbleX + layout.cornerRadius, rowY + layout.height - layout.cornerRadius, bubbleX, rowY + layout.height - layout.cornerRadius, conicWeight],
+        [Command.LINE, bubbleX, rowY + layout.cornerRadius],
+        [Command.CONIC, bubbleX + layout.cornerRadius, rowY + layout.cornerRadius, bubbleX + layout.cornerRadius, rowY, conicWeight],
         [Command.CLOSE],
       ])
       .fillColor("#1a1a2e").fillOpacity(0.85)
-      .strokeColor(color).strokeOpacity(0.9).strokeWidth(1)
+      .strokeColor(color).strokeOpacity(0.9).strokeWidth(layout.strokeWidth)
       .attachedTo(image.id).layer(ATTACHMENT_LAYER).locked(true)
       .id(getNameBubbleBgId(image.id))
       .visible(image.visible)
@@ -470,8 +505,8 @@ export function buildNameBubble(
       .position({ x: bubbleX, y: rowY - 1 })
       .plainText(name)
       .textAlign("CENTER").textAlignVertical("MIDDLE")
-      .fontSize(BUBBLE_FONT_SIZE).fontFamily(FONT).textType("PLAIN")
-      .height(BUBBLE_HEIGHT).width(bubbleWidth)
+      .fontSize(layout.fontSize).fontFamily(FONT).textType("PLAIN")
+      .height(layout.height).width(bubbleWidth)
       .fontWeight(500).fillColor(color).fillOpacity(0.95)
       .attachedTo(image.id).layer(TEXT_LAYER).locked(true)
       .id(getNameBubbleTextId(image.id))

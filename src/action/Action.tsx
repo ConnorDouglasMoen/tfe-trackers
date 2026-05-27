@@ -85,6 +85,20 @@ export default function Action(): React.JSX.Element {
 
   const rowClass =
     "flex items-center justify-between text-sm text-text-primary dark:text-text-primary-dark";
+  const sizeOptions = [
+    { label: "S", value: 0.75 },
+    { label: "M", value: 1 },
+    { label: "L", value: 1.25 },
+    { label: "XL", value: 1.5 },
+  ] as const;
+  const segmentedClass =
+    "flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10";
+  const segmentClass = (active: boolean) =>
+    `rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150 ${
+      active
+        ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
+        : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
+    }`;
   const trackClass = (on: boolean) =>
     `relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition duration-150 ${
       on ? "bg-[#74649f]" : "bg-black/20 dark:bg-white/20"
@@ -159,7 +173,7 @@ export default function Action(): React.JSX.Element {
 
             {/* ── On-Map Display settings ──────────────────────────────── */}
             <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-              On-Map Display
+              On-Map Display Settings
             </h2>
             <div className="flex flex-col gap-2">
               <div className={rowClass}>
@@ -185,18 +199,42 @@ export default function Action(): React.JSX.Element {
               </div>
               <div className={rowClass}>
                 <span>Injuries</span>
-                <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+                <div className={segmentedClass}>
                   {(["all", "filled-only", "none"] as const).map((opt) => (
                     <button
                       key={opt}
                       onClick={() => setSettings({ injuryDisplay: opt })}
-                      className={`rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150 ${
-                        settings.injuryDisplay === opt
-                          ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                          : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-                      }`}
+                      className={segmentClass(settings.injuryDisplay === opt)}
                     >
                       {opt === "all" ? "All" : opt === "filled-only" ? "Filled" : "None"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={rowClass}>
+                <span>Marker Size</span>
+                <div className={segmentedClass}>
+                  {sizeOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSettings({ markerScale: opt.value })}
+                      className={segmentClass(settings.markerScale === opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={rowClass}>
+                <span>Text Size</span>
+                <div className={segmentedClass}>
+                  {sizeOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSettings({ textScale: opt.value })}
+                      className={segmentClass(settings.textScale === opt.value)}
+                    >
+                      {opt.label}
                     </button>
                   ))}
                 </div>
@@ -216,7 +254,7 @@ export default function Action(): React.JSX.Element {
           </div>
         ) : (
           <p className="text-sm text-text-secondary dark:text-text-secondary-dark">
-            GM access required to configure display settings.
+            Right-click a token and open the TFE Trackers menu to configure that token's type, injury slots, strain, and conditions.
           </p>
         )}
 
