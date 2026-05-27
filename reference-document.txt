@@ -294,60 +294,61 @@ TODO / OPEN ITEMS
 - Configure Player-Owned token tracking in the action panel, when room permissions allow for player ownership
 
 Quality / functionality backlog:
-- Extract a shared TokenEditor component used by both TokenMenu.tsx and
-  TrackedTokenRow.tsx. Keep wrappers responsible for persistence target
-  (selection vs item ID), but share the Survivor/Other toggle, strain editor,
-  injury editor, conditions editor, and display-name editor to prevent behavior
-  drift between the context menu and GM Action panel.
-- Centralize token-record mutation helpers. Move repeated operations such as
+- 1. Add a DEV manifest/build flow. Generate or copy a development manifest with
+  localhost URLs and a production manifest with packaged URLs so local OBR
+  testing does not require manual manifest edits.
+- 2. Add automated tests for characterDataHelpers migration and display-setting
+  resolution. Cover legacy CharacterData blobs, legacy string complications,
+  legacy location -> description migration, missing displayOverrides,
+  displayAlias -> displayName migration, and markerScale/textScale defaults.
+- 3. Centralize token-record mutation helpers. Move repeated operations such as
   clamping strain, adding/removing conditions, updating injury slots, switching
   active type, and normalizing displayName into pure helper functions with unit
   tests. Stores/components should call the same helpers instead of duplicating
   patch logic.
-- Add automated tests for characterDataHelpers migration and display-setting
-  resolution. Cover legacy CharacterData blobs, legacy string complications,
-  legacy location -> description migration, missing displayOverrides,
-  displayAlias -> displayName migration, and markerScale/textScale defaults.
-- Add automated tests for on-map helper data behavior that can be tested without
-  OBR rendering. Prioritize injury slot resolution, empty-vs-filled injury
-  filtering, complication/condition deduplication, severity color precedence,
-  and defensive scale clamping.
-- Add write failure handling for OBR metadata updates. Current writes are mostly
-  optimistic fire-and-forget; add user-visible failure state or retry behavior
-  for TokenMenu, TrackedTokenRow, scene display settings, and tracked-token
-  pin/unpin writes.
-- Prevent stale tracked-token IDs from accumulating in scene metadata. The
+- 4. Extract a shared TokenEditor component used by both TokenMenu.tsx and
+  TrackedTokenRow.tsx. Keep wrappers responsible for persistence target
+  (selection vs item ID), but share the Survivor/Other toggle, strain editor,
+  injury editor, conditions editor, and display-name editor to prevent behavior
+  drift between the context menu and GM Action panel.
+- 5. Add write failure handling for OBR metadata updates. Current writes are
+  mostly optimistic fire-and-forget; add user-visible failure state or retry
+  behavior for TokenMenu, TrackedTokenRow, scene display settings, and
+  tracked-token pin/unpin writes.
+- 6. Prevent stale tracked-token IDs from accumulating in scene metadata. The
   Action panel currently filters deleted items out of the UI; add a GM-side
   cleanup pass or explicit "Clean missing tokens" action that removes deleted
   IDs from trackedTokenIds.
-- Make context-menu pin state explicit. Replace the single "Pin to Action Panel"
-  toggle label with distinct Pin/Unpin menu entries or metadata-aware labels
-  once OBR filtering supports it cleanly, so GMs can tell the current state
-  before clicking.
-- Add a bulk GM utility section for tracked tokens. Candidate actions:
+- 7. Make context-menu pin state explicit. Replace the single
+  "Pin to Action Panel" toggle label with distinct Pin/Unpin menu entries or
+  metadata-aware labels once OBR filtering supports it cleanly, so GMs can tell
+  the current state before clicking.
+- 8. Add a bulk GM utility section for tracked tokens. Candidate actions:
   unpin all missing tokens, unpin all tracked tokens, clear TFE data from all
   tracked tokens after confirmation, and refresh/rebuild on-map attachments.
-- Add a DEV manifest/build flow. Generate or copy a development manifest with
-  localhost URLs and a production manifest with packaged URLs so local OBR
-  testing does not require manual manifest edits.
-- Add an in-app quick reference or linked user guide covering Survivor vs Other,
-  injury slots, complications vs conditions, treated behavior, display overrides,
-  tracked tokens, and on-map display sizing.
-- Replace hand-drawn SVG button icons in React components with a shared icon
+- 9. Add automated tests for on-map helper data behavior that can be tested
+  without OBR rendering. Prioritize injury slot resolution, empty-vs-filled
+  injury filtering, complication/condition deduplication, severity color
+  precedence, and defensive scale clamping.
+- 10. Add performance guardrails for on-map redraws. Consider debouncing rapid
+  item metadata changes, avoiding full scene redraws when only unrelated scene
+  metadata changes, and documenting/limiting attachment counts for heavily
+  populated scenes.
+- 11. Review accessibility for compact controls. Add aria-label/title coverage
+  for segmented controls, size controls, injury slot steppers, strain boxes, and
+  icon buttons; ensure keyboard operation works in both the context menu and
+  Action panel.
+- 12. Replace hand-drawn SVG button icons in React components with a shared icon
   component or icon library. This will reduce duplicated inline SVGs and make
   hover/disabled/accessibility behavior consistent across TokenMenu,
   TrackedTokenRow, InjurySlotCard, and Conditions lists.
-- Review accessibility for compact controls. Add aria-label/title coverage for
-  segmented controls, size controls, injury slot steppers, strain boxes, and
-  icon buttons; ensure keyboard operation works in both the context menu and
-  Action panel.
-- Add visual QA coverage for the Action panel and token menu. Use a local dev
-  server and browser screenshots at narrow/wide sizes to catch text overflow,
-  cramped segmented controls, and regressions from the appearance pass.
-- Add performance guardrails for on-map redraws. Consider debouncing rapid item
-  metadata changes, avoiding full scene redraws when only unrelated scene
-  metadata changes, and documenting/limiting attachment counts for heavily
-  populated scenes.
-- Consider per-token size overrides only if playtesting shows scene-wide sizing
+- 13. Add visual QA coverage for the Action panel and token menu. Use a local
+  dev server and browser screenshots at narrow/wide sizes to catch text
+  overflow, cramped segmented controls, and regressions from the appearance
+  pass.
+- 14. Add an in-app quick reference or linked user guide covering Survivor vs
+  Other, injury slots, complications vs conditions, treated behavior, display
+  overrides, tracked tokens, and on-map display sizing.
+- 15. Consider per-token size overrides only if playtesting shows scene-wide sizing
   is insufficient. If added, extend TokenDisplayOverrides with nullable
   markerScale/textScale and keep scene defaults as the fallback.
