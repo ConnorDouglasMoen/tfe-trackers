@@ -4,7 +4,7 @@
 
 export type InjurySlot = {
   id: string;
-  location: string;
+  description: string;     // what/where the injury is
   complications: string[]; // list of complication strings, like conditions
   treated: boolean;
 };
@@ -100,7 +100,7 @@ export function resolveDisplaySettings(
 export function createInjurySlot(): InjurySlot {
   return {
     id: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-    location: "",
+    description: "",
     complications: [],
     treated: false,
   };
@@ -162,10 +162,10 @@ export function setActiveData(record: TokenRecord, data: CharacterData): TokenRe
 /////////////////////////////////////////////////////////////////////
 
 function isInjurySlot(v: unknown): v is InjurySlot {
-  const s = v as InjurySlot;
+  const s = v as InjurySlot & { location?: string };
   return (
     typeof s?.id === "string" &&
-    typeof s?.location === "string" &&
+    (typeof s?.description === "string" || typeof s?.location === "string") &&
     typeof s?.treated === "boolean" &&
     // complications may be legacy string or new string[]
     (Array.isArray(s?.complications) || typeof s?.complications === "string")
@@ -201,10 +201,13 @@ export function isTokenRecord(v: unknown): v is TokenRecord {
 // Migration
 /////////////////////////////////////////////////////////////////////
 
-/** Migrate a single InjurySlot — converts legacy string complications to string[]. */
-function migrateInjurySlot(s: InjurySlot): InjurySlot {
+/** Migrate a single InjurySlot — converts legacy string complications to string[],
+ *  and migrates legacy `location` field to `description`. */
+function migrateInjurySlot(s: InjurySlot & { location?: string }): InjurySlot {
   return {
     ...s,
+    // Migrate legacy 'location' field name to 'description'
+    description: s.description ?? s.location ?? "",
     complications: Array.isArray(s.complications)
       ? s.complications
       : typeof s.complications === "string" && (s.complications as string).length > 0

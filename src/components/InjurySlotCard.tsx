@@ -29,9 +29,9 @@ function ClearButton({ onClick }: { onClick: () => void }): React.JSX.Element {
 /**
  * A card representing one injury slot (Serious, Critical, or Lethal).
  *
- * - Location has a CLEAR button.
+ * - Description has a CLEAR button.
  * - Complications work like Conditions: Enter to add, X to delete each item.
- * - Treated toggle is disabled unless location or at least one complication is present.
+ * - Treated toggle is disabled unless description or at least one complication is present.
  * - Clearing all content automatically resets Treated.
  */
 export default function InjurySlotCard({
@@ -47,10 +47,10 @@ export default function InjurySlotCard({
 }): React.JSX.Element {
   const [compInput, setCompInput] = useState("");
 
-  const hasContent = slot.location.trim() !== "" || slot.complications.length > 0;
+  const hasContent = slot.description.trim() !== "" || slot.complications.length > 0;
 
-  const handleClearLocation = () => {
-    const patch: Partial<InjurySlot> = { location: "" };
+  const handleClearDescription = () => {
+    const patch: Partial<InjurySlot> = { description: "" };
     if (slot.complications.length === 0) patch.treated = false;
     onUpdate(patch);
   };
@@ -64,8 +64,8 @@ export default function InjurySlotCard({
   const removeComplication = (index: number) => {
     const updated = slot.complications.filter((_, i) => i !== index);
     const patch: Partial<InjurySlot> = { complications: updated };
-    // Reset treated if location is also empty and no complications remain.
-    if (updated.length === 0 && slot.location.trim() === "") patch.treated = false;
+    // Reset treated if description is also empty and no complications remain.
+    if (updated.length === 0 && slot.description.trim() === "") patch.treated = false;
     onUpdate(patch);
   };
 
@@ -95,16 +95,16 @@ export default function InjurySlotCard({
         </div>
       </div>
 
-      {/* Location row */}
+      {/* Description row */}
       <div className="flex items-center">
         <TextInput
-          value={slot.location}
-          onConfirm={(v) => onUpdate({ location: v })}
+          value={slot.description}
+          onConfirm={(v) => onUpdate({ description: v })}
           placeholder="Description (e.g. Shot in the Leg)"
           className="flex-1"
         />
-        {slot.location !== "" && (
-          <ClearButton onClick={handleClearLocation} />
+        {slot.description !== "" && (
+          <ClearButton onClick={handleClearDescription} />
         )}
       </div>
 

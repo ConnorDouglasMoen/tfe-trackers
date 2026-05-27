@@ -17,7 +17,7 @@ HP SYSTEM: Strain + Injuries
     * Critical Injury:  1 slot
     * Lethal Injury:    1 slot
   Each injury slot has:
-    - Location (text + CLEAR button)
+    - Description (text + CLEAR button)
     - Complications (text + CLEAR button; faded + strikethrough when Treated)
     - Treated toggle
 
@@ -61,7 +61,7 @@ type CharacterType = "survivor" | "other";
 
 type InjurySlot = {
   id: string;
-  location: string;
+  description: string;
   complications: string[];  // list, same pattern as conditions
   treated: boolean;
 };
@@ -94,7 +94,8 @@ Migration (migrateToTokenRecord):
   - Handles legacy CharacterData blobs (pre-TokenRecord)
   - Fills in characterType, seriousCount
   - Strips legacy displaySettings (now in scene metadata)
-  - migrateInjurySlot: converts legacy single-string complications → string[]
+  - migrateInjurySlot: converts legacy single-string complications → string[],
+                        migrates legacy `location` field → `description`
   - migrateCharacterData: also normalises legacy string conditions → string[]
 
 --- Scene metadata: DisplaySettings ---
@@ -245,7 +246,7 @@ src/
     PartiallyControlledInput.tsx / TextInput.tsx / ToggleButton.tsx
     StrainRow.tsx
     InjurySlotCard.tsx  — complications as string[]; Enter to add, X to delete
-                          Treated auto-resets when location+complications cleared
+                          Treated auto-resets when description+complications cleared
 
   displaySettings/            — UNUSED, delete this directory
 
@@ -263,9 +264,9 @@ TODO / OPEN ITEMS
   confirmed in OBR
 - Consider a "Reset token data" GM button
 - Appearance pass pending
-- Add token name as bubble above token
+- Add token name as bubble (like conditions) on the bottom right corner of the token (level with injury circles)
 - Establish a DEV environment manifest.json file
 - Add On-Map Display sizing features within Action panel.
 - Add button to remove all TFE Tracker data from token (removing On-Map Display items)
 - Add User Guide
-- Change 'location' terminology to 'description' for injuries
+- Consider using Red's Wound Markers for injuries.

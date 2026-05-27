@@ -181,7 +181,7 @@ function resolveInjuries(data: CharacterData): ResolvedInjury[] {
   const resolved: ResolvedInjury[] = [];
 
   const isEmpty = (s: InjurySlot) =>
-    s.location === "" && s.complications.length === 0 && !s.treated;
+    s.description === "" && s.complications.length === 0 && !s.treated;
 
   if (data.hasSerious) {
     const count = data.characterType === "survivor" ? 2 : data.seriousCount;
