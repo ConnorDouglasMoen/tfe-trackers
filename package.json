@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:obr": "npm run manifest:dev && vite --host 0.0.0.0 --port 5173",
+    "manifest:dev": "node scripts/write-dev-manifest.mjs",
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"

@@ -271,7 +271,7 @@ export function migrateToTokenRecord(raw: unknown): TokenRecord {
       other: migrateCharacterData(r.other),
       displayOverrides: migrateDisplayOverrides(r.displayOverrides),
       // Migrate legacy displayAlias into displayName if displayName is unset.
-      displayName: r.displayName || r.displayAlias || "",
+      displayName: r.displayName !== "" ? r.displayName : r.displayAlias ?? "",
     };
   }
   if (isCharacterData(raw)) {

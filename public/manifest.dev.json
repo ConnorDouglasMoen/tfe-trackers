@@ -1,0 +1,17 @@
+{
+  "name": "TFE Trackers DEV",
+  "version": "0.1.0",
+  "manifest_version": 1,
+  "author": "cdm",
+  "homepage_url": "https://github.com/ConnorDouglasMoen/tfe-trackers",
+  "icon": "http://localhost:5173/tales-from-elsewhere-logo.svg",
+  "background_url": "http://localhost:5173/src/background/background.html",
+  "description": "Strain, Injury, and Condition tracker for the Tales from Elsewhere RPG game system.",
+  "action": {
+    "title": "TFE Trackers",
+    "icon": "http://localhost:5173/tfe-cowboy.svg",
+    "popover": "http://localhost:5173/src/action/action.html",
+    "height": 200,
+    "width": 300
+  }
+}

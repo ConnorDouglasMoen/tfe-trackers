@@ -111,7 +111,6 @@ export async function clearTokenData(itemId: string): Promise<void> {
   OBR.scene.items.updateItems(items, (mutableItems) => {
     for (const item of mutableItems) {
       for (const key of keysToDelete) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete item.metadata[key];
       }
     }
