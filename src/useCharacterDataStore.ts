@@ -33,6 +33,8 @@ interface TokenRecordState {
   addCondition: (text: string) => void;
   removeCondition: (index: number) => void;
   setDisplayOverride: (patch: Partial<TokenDisplayOverrides>) => void;
+  /** Set the custom on-map name bubble text. Empty string hides the bubble. */
+  setDisplayName: (name: string) => void;
 }
 
 const defaultRecord = createDefaultTokenRecord();
@@ -115,6 +117,10 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
       ...state.record,
       displayOverrides: { ...state.record.displayOverrides, ...patch },
     })),
+
+  // Update the custom on-map name bubble.
+  setDisplayName: (displayName) =>
+    set((state) => mutate(state, { ...state.record, displayName })),
 }));
 
 function mutate(

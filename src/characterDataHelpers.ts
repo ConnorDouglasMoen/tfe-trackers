@@ -16,6 +16,8 @@ export type DisplaySettings = {
   showConditions: boolean;
   // "all" = show empty + filled circles; "filled-only" = filled only; "none" = hide row entirely
   injuryDisplay: "all" | "filled-only" | "none";
+  /** Whether to show the custom displayName bubble on the map. */
+  showName: boolean;
 };
 
 /**
@@ -26,6 +28,8 @@ export type TokenDisplayOverrides = {
   showStrain: boolean | null;
   showConditions: boolean | null;
   injuryDisplay: "all" | "filled-only" | "none" | null;
+  /** Per-token override for name bubble visibility. null = inherit scene setting. */
+  showName: boolean | null;
 };
 
 export type CharacterData = {
@@ -49,11 +53,11 @@ export type TokenRecord = {
   /** Per-token display overrides; null fields fall back to scene DisplaySettings. */
   displayOverrides: TokenDisplayOverrides;
   /**
-   * Optional alias shown in the Action panel tracked-tokens list.
-   * Does not affect the OBR item name — only visible to the GM in the Action panel.
-   * Undefined means fall back to the item's actual OBR name.
+   * Custom name shown in the Action panel tracked-tokens list AND as the
+   * on-map name bubble. Empty string falls back to the OBR item name in the
+   * Action panel and hides the bubble on the map.
    */
-  displayAlias?: string;
+  displayName: string;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -69,6 +73,7 @@ export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showStrain: true,
   showConditions: true,
   injuryDisplay: "all", // show all injury circles by default
+  showName: true,
 };
 
 /** Default overrides — all null means "use scene settings". */
@@ -76,6 +81,7 @@ export const DEFAULT_TOKEN_DISPLAY_OVERRIDES: TokenDisplayOverrides = {
   showStrain: null,
   showConditions: null,
   injuryDisplay: null,
+  showName: null,
 };
 
 /**
@@ -90,6 +96,7 @@ export function resolveDisplaySettings(
     showStrain: overrides.showStrain ?? scene.showStrain,
     showConditions: overrides.showConditions ?? scene.showConditions,
     injuryDisplay: overrides.injuryDisplay ?? scene.injuryDisplay,
+    showName: overrides.showName ?? scene.showName,
   };
 }
 
@@ -144,6 +151,7 @@ export function createDefaultTokenRecord(): TokenRecord {
     survivor: createSurvivorData(),
     other: createOtherData(),
     displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES },
+    displayName: "",
   };
 }
 
@@ -242,26 +250,29 @@ function migrateDisplayOverrides(raw: unknown): TokenDisplayOverrides {
     showStrain: r?.showStrain ?? null,
     showConditions: r?.showConditions ?? null,
     injuryDisplay: r?.injuryDisplay ?? null,
+    showName: r?.showName ?? null,
   };
 }
 
 export function migrateToTokenRecord(raw: unknown): TokenRecord {
   if (isTokenRecord(raw)) {
+    const r = raw as TokenRecord & { displayAlias?: string };
     return {
-      activeType: raw.activeType,
-      survivor: migrateCharacterData(raw.survivor),
-      other: migrateCharacterData(raw.other),
-      displayOverrides: migrateDisplayOverrides((raw as TokenRecord).displayOverrides),
-      displayAlias: (raw as TokenRecord).displayAlias,
+      activeType: r.activeType,
+      survivor: migrateCharacterData(r.survivor),
+      other: migrateCharacterData(r.other),
+      displayOverrides: migrateDisplayOverrides(r.displayOverrides),
+      // Migrate legacy displayAlias into displayName if displayName is unset.
+      displayName: r.displayName || r.displayAlias || "",
     };
   }
   if (isCharacterData(raw)) {
     const migrated = migrateCharacterData(raw);
     const defaults = createDefaultTokenRecord();
     if (migrated.characterType === "other") {
-      return { activeType: "other", survivor: defaults.survivor, other: migrated, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES } };
+      return { activeType: "other", survivor: defaults.survivor, other: migrated, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES }, displayName: "" };
     }
-    return { activeType: "survivor", survivor: migrated, other: defaults.other, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES } };
+    return { activeType: "survivor", survivor: migrated, other: defaults.other, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES }, displayName: "" };
   }
   return createDefaultTokenRecord();
 }

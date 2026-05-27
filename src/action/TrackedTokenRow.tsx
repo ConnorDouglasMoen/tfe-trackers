@@ -194,19 +194,17 @@ export function TrackedTokenRow({
     [item.id],
   );
 
-  /** Enter name-edit mode, pre-filling with the current alias or item name. */
+  /** Enter name-edit mode, pre-filling with the current displayName or item name. */
   const startEditingName = (e: React.MouseEvent) => {
-    e.stopPropagation(); // don't toggle the row collapse
-    const currentAlias = record.displayAlias?.trim() ?? "";
-    setNameInput(currentAlias || item.name);
+    e.stopPropagation();
+    setNameInput(record.displayName || item.name);
     setIsEditingName(true);
   };
 
-  /** Commit the edited alias — empty or matching item name clears the alias. */
+  /** Commit the edited name — empty or matching item name clears displayName. */
   const commitName = () => {
     const trimmed = nameInput.trim();
-    const newAlias = trimmed === "" || trimmed === item.name ? undefined : trimmed;
-    applyRecordPatch({ displayAlias: newAlias });
+    applyRecordPatch({ displayName: trimmed === item.name ? "" : trimmed });
     setIsEditingName(false);
   };
 

@@ -39,6 +39,17 @@ export function getConditionIds(tokenId: string, i: number): string[] {
   return [getConditionBgId(tokenId, i), getConditionTextId(tokenId, i)];
 }
 
+/** IDs for the name bubble (background path + text). */
+export const getNameBubbleBgId = (tokenId: string) =>
+  `${tokenId}-tfe-name-bg`;
+export const getNameBubbleTextId = (tokenId: string) =>
+  `${tokenId}-tfe-name-text`;
+
+/** All IDs for the name bubble. */
+export function getNameBubbleIds(tokenId: string): string[] {
+  return [getNameBubbleBgId(tokenId), getNameBubbleTextId(tokenId)];
+}
+
 // Maximum counts — used to sweep and delete stale attachments when counts shrink.
 export const MAX_STRAIN = 9;
 export const INJURY_SLOTS = ["s0", "s1", "c", "l"] as const;
@@ -50,5 +61,6 @@ export function getAllAttachmentIds(tokenId: string): string[] {
   for (let i = 0; i < MAX_STRAIN; i++) ids.push(...getStrainBoxIds(tokenId, i));
   for (const slot of INJURY_SLOTS) ids.push(...getInjuryCircleIds(tokenId, slot));
   for (let i = 0; i < MAX_CONDITIONS; i++) ids.push(...getConditionIds(tokenId, i));
+  ids.push(...getNameBubbleIds(tokenId));
   return ids;
 }

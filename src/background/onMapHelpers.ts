@@ -14,6 +14,8 @@ import {
   getInjuryCircleIconId,
   getConditionBgId,
   getConditionTextId,
+  getNameBubbleBgId,
+  getNameBubbleTextId,
 } from "./onMapItemIds";
 import { getImageCenter } from "./mathHelpers";
 
@@ -405,4 +407,76 @@ export function buildConditionItems(
 
     currentX += bubbleWidth + 2;
   }
+}
+
+/////////////////////////////////////////////////////////////////////
+// Name bubble (bottom-right of token, level with injury circles)
+/////////////////////////////////////////////////////////////////////
+
+/**
+ * Renders the token's custom displayName as a parchment-coloured pill bubble
+ * anchored to the bottom-right corner of the token, at the same Y level as
+ * the injury circles row. Does nothing when displayName is empty.
+ */
+export function buildNameBubble(
+  image: Image,
+  sceneDpi: number,
+  displayName: string,
+  addItems: Item[],
+): void {
+  const name = displayName.trim();
+  if (name === "") return;
+
+  const origin = getTokenBottomLeft(image, sceneDpi);
+  const dpiScale = sceneDpi / image.grid.dpi;
+  const tokenWidth = image.image.width * dpiScale * Math.abs(image.scale.x);
+
+  // Same Y as injury circles row.
+  const rowY = origin.y + ROW_GAP;
+
+  const color = "#e8d8a0"; // warm parchment — visually distinct from condition/complication bubbles
+  const textWidth = getTextWidth(name, `${BUBBLE_FONT_SIZE}px ${FONT}`);
+  const bubbleWidth = Math.min(textWidth + BUBBLE_PADDING_X * 2 + 4, tokenWidth);
+
+  // Pin right edge to token right edge.
+  const bubbleX = origin.x + tokenWidth - bubbleWidth - ROW_GAP;
+  const conicWeight = Math.sqrt(2) / 2;
+
+  addItems.push(
+    buildPath()
+      .commands([
+        [Command.MOVE, bubbleX + 2, rowY],
+        [Command.LINE, bubbleX + bubbleWidth - 2, rowY],
+        [Command.CONIC, bubbleX + bubbleWidth - 2, rowY + 2, bubbleX + bubbleWidth, rowY + 2, conicWeight],
+        [Command.LINE, bubbleX + bubbleWidth, rowY + BUBBLE_HEIGHT - 2],
+        [Command.CONIC, bubbleX + bubbleWidth - 2, rowY + BUBBLE_HEIGHT - 2, bubbleX + bubbleWidth - 2, rowY + BUBBLE_HEIGHT, conicWeight],
+        [Command.LINE, bubbleX + 2, rowY + BUBBLE_HEIGHT],
+        [Command.CONIC, bubbleX + 2, rowY + BUBBLE_HEIGHT - 2, bubbleX, rowY + BUBBLE_HEIGHT - 2, conicWeight],
+        [Command.LINE, bubbleX, rowY + 2],
+        [Command.CONIC, bubbleX + 2, rowY + 2, bubbleX + 2, rowY, conicWeight],
+        [Command.CLOSE],
+      ])
+      .fillColor("#1a1a2e").fillOpacity(0.85)
+      .strokeColor(color).strokeOpacity(0.9).strokeWidth(1)
+      .attachedTo(image.id).layer(ATTACHMENT_LAYER).locked(true)
+      .id(getNameBubbleBgId(image.id))
+      .visible(image.visible)
+      .disableAttachmentBehavior(DISABLE_BEHAVIORS).disableHit(DISABLE_HIT)
+      .build(),
+  );
+
+  addItems.push(
+    buildText()
+      .position({ x: bubbleX, y: rowY - 1 })
+      .plainText(name)
+      .textAlign("CENTER").textAlignVertical("MIDDLE")
+      .fontSize(BUBBLE_FONT_SIZE).fontFamily(FONT).textType("PLAIN")
+      .height(BUBBLE_HEIGHT).width(bubbleWidth)
+      .fontWeight(500).fillColor(color).fillOpacity(0.95)
+      .attachedTo(image.id).layer(TEXT_LAYER).locked(true)
+      .id(getNameBubbleTextId(image.id))
+      .visible(image.visible)
+      .disableAttachmentBehavior(DISABLE_BEHAVIORS).disableHit(DISABLE_HIT)
+      .build(),
+  );
 }

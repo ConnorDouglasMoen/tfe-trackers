@@ -9,7 +9,7 @@ import {
 import { SCENE_DISPLAY_METADATA_ID } from "../useSceneDisplayStore";
 import { getActiveDataFromItem, getTokenRecordFromItem } from "../itemMetadataHelpers";
 import { getAllAttachmentIds } from "./onMapItemIds";
-import { buildStrainItems, buildInjuryItems, buildConditionItems } from "./onMapHelpers";
+import { buildStrainItems, buildInjuryItems, buildConditionItems, buildNameBubble } from "./onMapHelpers";
 
 let itemsLast: Image[] = [];
 let sceneListenersSet = false;
@@ -123,6 +123,11 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
       addItems,
       showConditions,
     );
+  }
+
+  // Name bubble — gated by resolved showName setting.
+  if (record.displayName !== "" && effectiveSettings.showName) {
+    buildNameBubble(image, sceneDpi, record.displayName, addItems);
   }
 }
 

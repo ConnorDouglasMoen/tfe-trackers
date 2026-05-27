@@ -36,15 +36,14 @@ export default function Action(): React.JSX.Element {
     .map((id) => items.find((item) => item.id === id))
     .filter((item): item is NonNullable<typeof item> => item !== undefined);
 
-  // Build display names: prefer the token's stored alias over its OBR item name.
+  // Build display names: prefer the token's stored displayName over its OBR item name.
   // If multiple tokens share the same resolved base name, append a 1-based
   // numeric suffix to each duplicate (e.g. "Goblin 1", "Goblin 2").
   const displayNames: Map<string, string> = (() => {
     const result = new Map<string, string>();
-    // Resolve base name for each item: alias > item.name > fallback.
     const baseName = (item: Item) => {
-      const alias = getTokenRecordFromItem(item).displayAlias;
-      return (alias?.trim() || item.name.trim()) || `Token ${item.id.slice(0, 6)}`;
+      const name = getTokenRecordFromItem(item).displayName.trim();
+      return name || item.name.trim() || `Token ${item.id.slice(0, 6)}`;
     };
     // Count occurrences of each base name.
     const nameCounts = new Map<string, number>();
@@ -175,6 +174,13 @@ export default function Action(): React.JSX.Element {
                 <Toggle
                   checked={settings.showConditions}
                   onChange={() => setSettings({ showConditions: !settings.showConditions })}
+                />
+              </div>
+              <div className={rowClass}>
+                <span>Show Token Names</span>
+                <Toggle
+                  checked={settings.showName}
+                  onChange={() => setSettings({ showName: !settings.showName })}
                 />
               </div>
               <div className={rowClass}>

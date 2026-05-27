@@ -7,6 +7,7 @@ import { getPluginId } from "../getPluginId";
 import { STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
 import StrainRow from "../components/StrainRow";
 import InjurySlotCard from "../components/InjurySlotCard";
+import TextInput from "../components/TextInput";
 
 /** Small +/- stepper. */
 function Stepper({
@@ -105,6 +106,22 @@ function TokenDisplaySection(): React.JSX.Element {
           </div>
         </div>
 
+        {/* Name bubble override */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-text-primary dark:text-text-primary-dark">Token Name</span>
+          <div className="flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
+            {([null, true, false] as const).map((val) => (
+              <button
+                key={String(val)}
+                onClick={() => setDisplayOverride({ showName: val })}
+                className={`${btnBase} ${overrides.showName === val ? btnActive : btnInactive}`}
+              >
+                {boolLabel(val)}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
     </section>
   );
@@ -155,6 +172,7 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
   const role = useOwlbearStore((state) => state.role);
 
   const data = useCharacterDataStore((state) => state.data);
+  const record = useCharacterDataStore((state) => state.record);
   const setRecord = useCharacterDataStore((state) => state.setRecord);
   const setCharacterType = useCharacterDataStore((state) => state.setCharacterType);
   const setStrainCurrent = useCharacterDataStore((state) => state.setStrainCurrent);
@@ -166,6 +184,7 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
   const setSeriousCount = useCharacterDataStore((state) => state.setSeriousCount);
   const setHasCritical = useCharacterDataStore((state) => state.setHasCritical);
   const setHasLethal = useCharacterDataStore((state) => state.setHasLethal);
+  const setDisplayName = useCharacterDataStore((state) => state.setDisplayName);
 
   const [initDone, setInitDone] = useState(false);
 
@@ -232,6 +251,17 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
             </button>
           )}
         </div>
+
+        {/* ── Name Bubble ────────────────────────────────────────── */}
+        <section>
+          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Name</h2>
+          {/* Confirm on blur/Enter; clears to empty to hide the on-map bubble */}
+          <TextInput
+            value={record.displayName}
+            onConfirm={(v) => setDisplayName(v)}
+            placeholder="Add displayed token name"
+          />
+        </section>
 
         {/* ── Strain ─────────────────────────────────────────────── */}
         <section>
