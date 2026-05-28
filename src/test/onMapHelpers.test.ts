@@ -8,7 +8,6 @@ import {
 } from "../background/onMapHelpers";
 import {
   createSurvivorData,
-  createInjurySlot,
   DisplaySettings,
 } from "../characterDataHelpers";
 

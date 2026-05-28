@@ -9,10 +9,6 @@ import {
   setActiveData,
   isTokenRecord,
   migrateToTokenRecord,
-  DEFAULT_DISPLAY_SETTINGS,
-  DEFAULT_TOKEN_DISPLAY_OVERRIDES,
-  CharacterData,
-  TokenRecord,
 } from "../characterDataHelpers";
 
 describe("characterDataHelpers", () => {

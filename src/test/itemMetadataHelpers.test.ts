@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import OBR, { Item } from "@owlbear-rodeo/sdk";
+import OBR from "@owlbear-rodeo/sdk";
 import {
   writeTokenRecordToItem,
   writeTokenRecordToSelection,
