@@ -211,12 +211,14 @@ DECISIONS MADE
   resolveDisplaySettings() merges scene + token visibility overrides before building map items.
   markerScale/textScale are scene-level only and are not token-overridable.
 - Bubble text width measured via canvas.measureText (not estimated).
-- Tracked Token IDs stored at: OBR.scene.metadata[getPluginId("trackedTokenIds")]
-  - string[] of OBR item IDs pinned by the GM
-  - Toggled via context menu "Pin to Action Panel" (background.ts onClick)
-  - Unpin button in TrackedTokenRow calls useTrackedTokensStore.untrackToken
-  - Action panel reads list, resolves live Items from useOwlbearStore.items
-  - Deleted items are filtered out silently (no stale IDs shown)
+- Tracked Token IDs stored in localStorage (key: getPluginId("trackedTokenIds")):
+  - OBR player metadata is session-scoped and does not persist across refreshes.
+    localStorage is private per-browser, persists indefinitely, synchronous.
+  - Each user's list is private by virtue of being their own browser storage.
+  - Context menu onClick in background.ts reads/writes localStorage directly.
+  - Action panel store (useTrackedTokensStore) loads from localStorage on init
+    (synchronous, no async wait) and listens for StorageEvent to catch
+    cross-frame writes from the background script.
 - writeTokenRecordToItem(itemId, record) added to itemMetadataHelpers.ts;
   used by TrackedTokenRow so each row writes directly to its target item
   without needing or affecting the current selection.
@@ -235,9 +237,9 @@ src/
   useCharacterDataStore.ts    — Zustand store for TokenRecord
   useSceneDisplayStore.ts     — Zustand store for scene DisplaySettings;
                                 init() wires OBR.scene.onMetadataChange
-  useTrackedTokensStore.ts    — Zustand store for GM-pinned token IDs;
-                                init() wires scene metadata listener;
-                                trackToken/untrackToken write to scene metadata
+  useTrackedTokensStore.ts    — Zustand store for per-user pinned token IDs;
+                                init() wires OBR.player.onChange listener;
+                                trackToken/untrackToken write to player metadata
   useOwlbearStore.ts
   useOwlbearStoreSync.ts
   getPluginId.ts / getTheme.ts / OBRThemeProvider.tsx
@@ -333,6 +335,7 @@ TODO / OPEN ITEMS
 - Consider using Red's Wound Markers for injuries.
 - Configure Player-Owned token tracking in the action panel, when room permissions allow for player ownership
 - Clear TFE Data button should remove token from Action Panel tracker
+- Sometimes, the On-Map Displays don't show up. Refreshing the page fixes this. What's going on?
 
 Quality / functionality backlog:
 - 1. Add automated tests for characterDataHelpers migration and display-setting

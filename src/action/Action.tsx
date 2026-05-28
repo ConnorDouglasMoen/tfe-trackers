@@ -22,12 +22,10 @@ export default function Action(): React.JSX.Element {
   const setSettings = useSceneDisplayStore((state) => state.setSettings);
   const initSceneDisplay = useSceneDisplayStore((state) => state.init);
   const trackedTokenIds = useTrackedTokensStore((state) => state.trackedTokenIds);
-  const initTrackedTokens = useTrackedTokensStore((state) => state.init);
 
-  // Wire up scene metadata listeners once.
+  // Wire up scene display metadata listener once.
   useEffect(() => {
     initSceneDisplay();
-    return initTrackedTokens();
   }, []);
 
   // Resolve live Item objects for pinned token IDs.
@@ -136,42 +134,54 @@ export default function Action(): React.JSX.Element {
 
         <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
 
-        {role === "GM" ? (
+        {/* ── Tracked Tokens — shown for all roles ───────────────────── */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
+            Tracked Tokens
+          </h2>
+          {trackedItems.length > 0 && (
+            <span className="text-xs text-text-disabled dark:text-text-disabled-dark">
+              {trackedItems.length} pinned
+            </span>
+          )}
+        </div>
+
+        {trackedItems.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {trackedItems.map((item) => (
+              <TrackedTokenRow
+                key={item.id}
+                item={item}
+                displayName={displayNames.get(item.id) ?? item.name}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
+            Right-click a token and choose{" "}
+            <span className="font-semibold">Pin to Action Panel</span> to
+            track it here.
+          </p>
+        )}
+
+        <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
+
+          {/* Per-token config reminder */}
+          <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
+            Per-Token Configuration
+          </h2>
+          <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
+            Right-click a token and open the TFE Trackers menu to configure
+            that token's type, injury slots, strain, and conditions.
+          </p>
+
+        {/* ── GM-only sections ───────────────────────────────────────── */}
+        {role === "GM" && (
           <div className="flex flex-col gap-3">
-
-            {/* ── Tracked Tokens ──────────────────────────────────────── */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-                Tracked Tokens
-              </h2>
-              {trackedItems.length > 0 && (
-                <span className="text-xs text-text-disabled dark:text-text-disabled-dark">
-                  {trackedItems.length} pinned
-                </span>
-              )}
-            </div>
-
-            {trackedItems.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {trackedItems.map((item) => (
-                  <TrackedTokenRow
-                    key={item.id}
-                    item={item}
-                    displayName={displayNames.get(item.id) ?? item.name}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
-                Right-click a token and choose{" "}
-                <span className="font-semibold">Pin to Action Panel</span> to
-                track it here.
-              </p>
-            )}
 
             <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
 
-            {/* ── On-Map Display settings ──────────────────────────────── */}
+            {/* ── On-Map Display settings ────────────────────────────── */}
             <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
               On-Map Display Settings
             </h2>
@@ -240,22 +250,7 @@ export default function Action(): React.JSX.Element {
                 </div>
               </div>
             </div>
-
-            <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
-
-            {/* Per-token config reminder */}
-            <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-              Per-Token Configuration
-            </h2>
-            <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
-              Right-click a token and open the TFE Trackers menu to configure
-              that token's type, injury slots, strain, and conditions.
-            </p>
           </div>
-        ) : (
-          <p className="text-sm text-text-secondary dark:text-text-secondary-dark">
-            Right-click a token and open the TFE Trackers menu to configure that token's type, injury slots, strain, and conditions.
-          </p>
         )}
 
         <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />

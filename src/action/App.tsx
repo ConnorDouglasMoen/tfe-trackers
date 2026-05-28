@@ -1,14 +1,26 @@
+import { useEffect } from "react";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useOwlbearStoreSync } from "../useOwlbearStoreSync";
+import { useTrackedTokensStore } from "../useTrackedTokensStore";
 import Action from "./Action";
 import "../index.css";
 
 /**
  * Root app for the action popover.
  * Renders a scene-not-open notice if no scene is active.
+ *
+ * Tracked tokens init runs here (not inside Action) so player metadata is
+ * loaded immediately on OBR.onReady, independent of scene state.
  */
 export default function App(): React.JSX.Element {
   useOwlbearStoreSync();
+
+  // Init tracked tokens at the app level so it loads on page open,
+  // not deferred until the scene is ready.
+  const initTrackedTokens = useTrackedTokensStore((state) => state.init);
+  useEffect(() => {
+    return initTrackedTokens();
+  }, []);
 
   const sceneReady = useOwlbearStore((state) => state.sceneReady);
   const mode = useOwlbearStore((state) => state.themeMode);

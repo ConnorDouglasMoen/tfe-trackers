@@ -1,29 +1,57 @@
-import OBR from "@owlbear-rodeo/sdk";
+import OBR, { Player } from "@owlbear-rodeo/sdk";
 import { create } from "zustand";
 import { getPluginId } from "./getPluginId";
 
 /**
- * Scene metadata key for the list of token IDs pinned to the Action panel.
- * GM-only: stored in scene metadata so it persists per-scene.
+ * localStorage key for the list of token IDs pinned to the Action panel.
+ *
+ * We use localStorage (not OBR player metadata) because player metadata is
+ * session-scoped and does not persist across page refreshes. localStorage is
+ * private per-browser, persists indefinitely, and requires no OBR API calls.
+ *
+ * The key is namespaced by plugin ID to avoid collisions.
  */
-const TRACKED_TOKENS_METADATA_ID = "trackedTokenIds";
+const STORAGE_KEY = getPluginId("trackedTokenIds");
+
+/** Read the tracked token ID list from localStorage. */
+function loadFromStorage(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Write the tracked token ID list to localStorage. */
+function saveToStorage(ids: string[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage errors (e.g. private browsing quota exceeded).
+  }
+}
 
 interface TrackedTokensState {
-  /** OBR item IDs of tokens pinned to the Action panel. */
+  /** OBR item IDs of tokens pinned to the Action panel by this user. */
   trackedTokenIds: string[];
 
   /**
-   * Subscribe to scene metadata and load the initial list.
-   * Call once on mount inside the Action panel.
-   * Returns an unsubscribe function for cleanup.
+   * Load initial state from localStorage and subscribe to OBR player changes
+   * to prune stale IDs when the player reconnects to a different scene.
+   * Call once on mount. Returns an unsubscribe function for cleanup.
    */
   init: () => () => void;
 
   /** Add a token ID to the tracked list (no-op if already present). */
-  trackToken: (id: string) => Promise<void>;
+  trackToken: (id: string) => void;
 
   /** Remove a token ID from the tracked list (no-op if not present). */
-  untrackToken: (id: string) => Promise<void>;
+  untrackToken: (id: string) => void;
 
   /** Returns true if the given token ID is currently tracked. */
   isTracked: (id: string) => boolean;
@@ -33,41 +61,45 @@ export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => 
   trackedTokenIds: [],
 
   init: () => {
-    // Read current scene metadata and start listening for changes.
-    const key = getPluginId(TRACKED_TOKENS_METADATA_ID);
+    // Load immediately from localStorage — synchronous, no async wait.
+    set({ trackedTokenIds: loadFromStorage() });
 
-    const applyMetadata = (metadata: Record<string, unknown>) => {
-      const raw = metadata[key];
-      const ids: string[] = Array.isArray(raw)
-        ? (raw as unknown[]).filter((v): v is string => typeof v === "string")
-        : [];
-      set({ trackedTokenIds: ids });
+    // Listen for storage events fired by other frames (e.g. the background
+    // script's context menu onClick writes to localStorage, which triggers
+    // a 'storage' event in the Action panel iframe).
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        set({ trackedTokenIds: loadFromStorage() });
+      }
     };
+    window.addEventListener("storage", handleStorage);
 
-    // Load initial value.
-    void OBR.scene.getMetadata().then(applyMetadata);
+    // Also re-read on any player change as a secondary sync mechanism
+    // (covers same-frame writes that don't fire storage events).
+    const unsubscribePlayer = OBR.player.onChange((_player: Player) => {
+      set({ trackedTokenIds: loadFromStorage() });
+    });
 
-    // Subscribe to future changes; returns an unsubscribe function.
-    return OBR.scene.onMetadataChange(applyMetadata);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      unsubscribePlayer();
+    };
   },
 
-  trackToken: async (id: string) => {
+  trackToken: (id: string) => {
     const current = get().trackedTokenIds;
     if (current.includes(id)) return;
     const next = [...current, id];
-    await OBR.scene.setMetadata({
-      [getPluginId(TRACKED_TOKENS_METADATA_ID)]: next,
-    });
-    // Local state will be updated via the onMetadataChange listener.
+    saveToStorage(next);
+    set({ trackedTokenIds: next });
   },
 
-  untrackToken: async (id: string) => {
+  untrackToken: (id: string) => {
     const current = get().trackedTokenIds;
     if (!current.includes(id)) return;
     const next = current.filter((tid) => tid !== id);
-    await OBR.scene.setMetadata({
-      [getPluginId(TRACKED_TOKENS_METADATA_ID)]: next,
-    });
+    saveToStorage(next);
+    set({ trackedTokenIds: next });
   },
 
   isTracked: (id: string) => get().trackedTokenIds.includes(id),

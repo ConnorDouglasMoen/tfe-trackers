@@ -4,8 +4,8 @@ import { HIDDEN_METADATA_ID } from "../characterDataHelpers";
 import { clearTokenData } from "../itemMetadataHelpers";
 import { initOnMapDisplay } from "./onMapDisplay";
 
-/** Scene metadata key for pinned token IDs — must match useTrackedTokensStore. */
-const TRACKED_TOKENS_METADATA_ID = "trackedTokenIds";
+/** localStorage key for pinned token IDs — must match useTrackedTokensStore. */
+const STORAGE_KEY = getPluginId("trackedTokenIds");
 
 // Use the same icon as the Action button for visual consistency.
 const menuIcon = new URL(
@@ -87,15 +87,36 @@ OBR.onReady(async () => {
     },
   });
 
-  // GM-only context menu: pin/unpin a token from the Action panel tracker list.
-  // The label and icon change depending on whether the token is already tracked.
-  // Two separate registrations handle the two visual states; OBR picks the first
-  // whose filter matches the current selection + metadata.
+  // All-users context menu: pin/unpin a token from the Action panel tracker
+  // list. Each user's list is private — stored in player metadata, not scene
+  // metadata — so GMs and players maintain independent lists.
+  //
+  // Players only see this entry on tokens they have UPDATE permission on
+  // (i.e. tokens they own) and that are not hidden by the GM.
+  // GMs see it on all CHARACTER/MOUNT tokens.
   OBR.contextMenu.create({
     id: getPluginId("pin-token"),
     icons: [
       {
-        // Shown when the token is NOT yet in the tracked list → offer to pin.
+        icon: menuIcon,
+        label: "Pin to Action Panel",
+        filter: {
+          every: [
+            { key: "layer", value: "CHARACTER", coordinator: "||" },
+            { key: "layer", value: "MOUNT" },
+            { key: "type", value: "IMAGE" },
+            {
+              key: ["metadata", getPluginId(HIDDEN_METADATA_ID)],
+              value: true,
+              operator: "!=",
+            },
+          ],
+          permissions: ["UPDATE"],
+          max: 1,
+        },
+      },
+      {
+        // GMs can pin any token regardless of hidden flag.
         icon: menuIcon,
         label: "Pin to Action Panel",
         filter: {
@@ -109,27 +130,30 @@ OBR.onReady(async () => {
         },
       },
     ],
-    onClick: async (context) => {
+    onClick: (context) => {
       const itemId = context.items[0]?.id;
       if (itemId === undefined) return;
 
-      const key = getPluginId(TRACKED_TOKENS_METADATA_ID);
-      const metadata = await OBR.scene.getMetadata();
-      const raw = metadata[key];
-      const current: string[] = Array.isArray(raw)
-        ? (raw as unknown[]).filter((v): v is string => typeof v === "string")
-        : [];
+      // Read/write localStorage directly — synchronous, private per-browser,
+      // persists across page refreshes.
+      let current: string[] = [];
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw !== null) {
+          const parsed: unknown = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            current = parsed.filter((v): v is string => typeof v === "string");
+          }
+        }
+      } catch { /* ignore */ }
 
-      let next: string[];
-      if (current.includes(itemId)) {
-        // Already tracked → remove (unpin).
-        next = current.filter((id) => id !== itemId);
-      } else {
-        // Not tracked → add (pin).
-        next = [...current, itemId];
-      }
+      const next = current.includes(itemId)
+        ? current.filter((id) => id !== itemId)
+        : [...current, itemId];
 
-      await OBR.scene.setMetadata({ [key]: next });
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch { /* ignore */ }
     },
   });
 
