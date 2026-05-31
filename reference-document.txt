@@ -335,7 +335,6 @@ TODO / OPEN ITEMS
 - Consider using Red's Wound Markers for injuries.
 - Configure Player-Owned token tracking in the action panel, when room permissions allow for player ownership
 - Clear TFE Data button should remove token from Action Panel tracker
-- Sometimes, the On-Map Displays don't show up. Refreshing the page fixes this. What's going on?
 
 Quality / functionality backlog:
 - 1. Add automated tests for characterDataHelpers migration and display-setting

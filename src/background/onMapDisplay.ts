@@ -16,6 +16,13 @@ let sceneListenersSet = false;
 let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 let sceneDpi = 150;
 
+/**
+ * Incremented each time refreshAll starts. Checked after each await so that
+ * a scene not-ready transition mid-refresh causes the stale run to abort
+ * instead of adding items to a scene that just wiped local state.
+ */
+let refreshGeneration = 0;
+
 function readDisplaySettings(meta: Metadata): DisplaySettings {
   const raw = meta[getPluginId(SCENE_DISPLAY_METADATA_ID)];
   if (raw !== null && typeof raw === "object") {
@@ -24,29 +31,55 @@ function readDisplaySettings(meta: Metadata): DisplaySettings {
   return { ...DEFAULT_DISPLAY_SETTINGS };
 }
 
-export async function initOnMapDisplay() {
-  const meta = await OBR.scene.getMetadata();
-  displaySettings = readDisplaySettings(meta);
+export function initOnMapDisplay() {
+  // Wire up the ready-change listener first — before any awaits — so we never
+  // miss a ready event due to async yielding. Everything else is triggered from
+  // here rather than relying on a post-await isReady() check, which has a
+  // window where the ready event fires between the call and the check.
+  OBR.scene.onReadyChange(async (isReady) => {
+    if (isReady) {
+      // Read metadata fresh on each scene-ready so display settings are always
+      // current (the previous getMetadata call happened before ready, potentially
+      // returning empty/stale data).
+      const meta = await OBR.scene.getMetadata();
+      displaySettings = readDisplaySettings(meta);
+      await refreshAll();
+      startListeners();
+    }
+  });
 
+  // Respond to scene-level display setting changes (GM Action panel updates).
   OBR.scene.onMetadataChange((meta) => {
     displaySettings = readDisplaySettings(meta);
     void refreshAll();
   });
 
-  OBR.scene.onReadyChange(async (isReady) => {
-    if (isReady) { await refreshAll(); startListeners(); }
-  });
-
-  const isReady = await OBR.scene.isReady();
-  if (isReady) { await refreshAll(); startListeners(); }
+  // Also handle the case where the scene is already ready when the background
+  // script loads (e.g. extension reload without page refresh).
+  void (async () => {
+    const isReady = await OBR.scene.isReady();
+    if (isReady) {
+      const meta = await OBR.scene.getMetadata();
+      displaySettings = readDisplaySettings(meta);
+      await refreshAll();
+      startListeners();
+    }
+  })();
 }
 
 async function refreshAll() {
+  // Claim this generation; any concurrent or prior refreshAll calls with a
+  // lower generation will bail out after their next await, preventing a race
+  // where deleteItems succeeds but batchAdd runs against a stale/gone scene.
+  const generation = ++refreshGeneration;
+
   sceneDpi = await OBR.scene.grid.getDpi();
+  if (generation !== refreshGeneration) return;
 
   const items: Image[] = await OBR.scene.items.getItems(
     (item) => (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
   );
+  if (generation !== refreshGeneration) return;
   itemsLast = items;
 
   const addItems: Item[] = [];
@@ -54,6 +87,7 @@ async function refreshAll() {
   for (const item of items) updateItem(item, addItems, deleteIds);
 
   if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
+  if (generation !== refreshGeneration) return;
   await batchAdd(addItems);
 }
 
@@ -79,7 +113,16 @@ function startListeners() {
   });
 
   OBR.scene.onReadyChange((isReady) => {
-    if (!isReady) { unsubItems(); sceneListenersSet = false; }
+    if (!isReady) {
+      // Scene went away — tear down item listener and allow re-init.
+      unsubItems();
+      sceneListenersSet = false;
+    } else {
+      // Scene became ready again (e.g. after a mid-load not-ready blip).
+      // Re-run a full refresh and restart listeners so nothing is missed.
+      void refreshAll();
+      startListeners();
+    }
   });
 }
 
@@ -132,15 +175,21 @@ function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
   }
 }
 
+/**
+ * Returns items that are new or have changed position, scale, visibility, or
+ * token metadata since the last snapshot. Uses a Map keyed by item ID so
+ * order differences between itemsLast and the current list don't cause items
+ * to be silently skipped (the previous index-walk algorithm could mis-skip
+ * tokens when the array order shifted, leaving attachments deleted but never
+ * rebuilt).
+ */
 function getChangedItems(current: Image[]): Image[] {
+  const lastById = new Map<string, Image>(itemsLast.map((img) => [img.id, img]));
   const changed: Image[] = [];
-  let skip = 0;
-  for (let i = 0; i < current.length; i++) {
-    if (i > itemsLast.length - 1 - skip) { changed.push(current[i]); continue; }
-    if (itemsLast[i + skip].id !== current[i].id) { skip++; i--; continue; }
-    const last = itemsLast[i + skip];
-    const cur = current[i];
+  for (const cur of current) {
+    const last = lastById.get(cur.id);
     if (
+      last === undefined ||
       last.scale.x !== cur.scale.x ||
       last.scale.y !== cur.scale.y ||
       last.position.x !== cur.position.x ||
