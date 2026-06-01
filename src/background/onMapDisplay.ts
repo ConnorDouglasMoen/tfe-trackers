@@ -16,6 +16,13 @@ let sceneListenersSet = false;
 let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 let sceneDpi = 150;
 
+// Fonts (e.g. Roboto) may not be loaded when OBR first fires onReadyChange,
+// causing Unicode symbols to fall back to a system font and render incorrectly.
+// A delayed second refresh (matching the owl-trackers reference approach)
+// corrects any mis-rendered glyphs once fonts have had time to load.
+let extraRefreshDone = false;
+const EXTRA_REFRESH_DELAY = 1000;
+
 /**
  * Incremented each time refreshAll starts. Checked after each await so that
  * a scene not-ready transition mid-refresh causes the stale run to abort
@@ -45,6 +52,10 @@ export function initOnMapDisplay() {
       displaySettings = readDisplaySettings(meta);
       await refreshAll();
       startListeners();
+      setTimeout(() => {
+        if (!extraRefreshDone) void refreshAll();
+        extraRefreshDone = true;
+      }, EXTRA_REFRESH_DELAY);
     }
   });
 
@@ -63,6 +74,10 @@ export function initOnMapDisplay() {
       displaySettings = readDisplaySettings(meta);
       await refreshAll();
       startListeners();
+      setTimeout(() => {
+        if (!extraRefreshDone) void refreshAll();
+        extraRefreshDone = true;
+      }, EXTRA_REFRESH_DELAY);
     }
   })();
 }

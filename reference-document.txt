@@ -325,6 +325,16 @@ Manual QA checklist for local Owlbear testing:
   - Test as PLAYER where possible; confirm GM-only controls are unavailable.
 
 --------------------------------------------------------------------
+BUGS FIXED
+--------------------------------------------------------------------
+- Font rendering race on scene load (onMapDisplay.ts):
+  Unicode symbols (✕, ✓) rendered as ☒ on first load because fonts weren't
+  ready when OBR built attachment items. Fixed by adding a setTimeout
+  (1000ms) delayed second refreshAll() call after the initial render,
+  matching the owl-trackers reference approach. The extra refresh only
+  fires once per session (guarded by extraRefreshDone flag).
+
+--------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
 - Delete src/displaySettings/ directory manually (still present)
