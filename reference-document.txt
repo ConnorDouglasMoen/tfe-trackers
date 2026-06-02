@@ -277,6 +277,34 @@ src/
 
   displaySettings/            — UNUSED, delete this directory
 
+  test/
+    characterDataHelpers.test.ts   — types, factories, guards, migration,
+                                     constants, resolveDisplaySettings
+    itemMetadataHelpers.test.ts    — read/write/clear metadata; hidden flag;
+                                     legacy key fallback; new-key-wins precedence
+    mathHelpers.test.ts            — getFillPortion, createRoundedRectangle,
+                                     getImageCenter
+    onMapHelpers.test.ts           — buildStrainItems, buildInjuryItems,
+                                     buildConditionItems, buildNameBubble;
+                                     survivor vs other seriousCount;
+                                     dedup / severity color precedence;
+                                     scale clamping; output shapes/colors/IDs
+    onMapDisplay.test.ts           — display-layer gating for injuryDisplay
+                                     and showConditions before builder helpers
+    onMapItemIds.test.ts           — all ID generators; getAllAttachmentIds
+                                     count, uniqueness, and prefix checks
+    setup.ts                       — OBR SDK mock; localStorage mock;
+                                     canvas.measureText mock
+    useCharacterDataStore.test.ts  — all store mutations: strain clamping,
+                                     type switching, injury toggles,
+                                     add/removeCondition, display overrides,
+                                     displayName, writeToItem callback
+    useSceneDisplayStore.test.ts   — initial state; setSettings patches;
+                                     OBR write-through; init() metadata load;
+                                     onMetadataChange reactive updates
+    useTrackedTokensStore.test.ts  — localStorage persistence; track/untrack;
+                                     StorageEvent sync; malformed data resilience
+
 public/
   manifest.json               — plugin icon: tales-from-elsewhere-logo.svg
                                 action icon: tfe-cowboy.svg
@@ -347,10 +375,11 @@ TODO / OPEN ITEMS
 - Clear TFE Data button should remove token from Action Panel tracker
 
 Quality / functionality backlog:
-- 1. Add automated tests for characterDataHelpers migration and display-setting
-  resolution. Cover legacy CharacterData blobs, legacy string complications,
+- 1. [DONE] Automated tests for characterDataHelpers migration and display-setting
+  resolution. Covers legacy CharacterData blobs, legacy string complications,
   legacy location -> description migration, missing displayOverrides,
-  displayAlias -> displayName migration, and markerScale/textScale defaults.
+  displayAlias -> displayName migration, markerScale/textScale defaults,
+  constants, getActiveData/setActiveData, and isTokenRecord edge cases.
 - 2. Centralize token-record mutation helpers. Move repeated operations such as
   clamping strain, adding/removing conditions, updating injury slots, switching
   active type, and normalizing displayName into pure helper functions with unit
@@ -376,10 +405,12 @@ Quality / functionality backlog:
 - 7. Add a bulk GM utility section for tracked tokens. Candidate actions:
   unpin all missing tokens, unpin all tracked tokens, clear TFE data from all
   tracked tokens after confirmation, and refresh/rebuild on-map attachments.
-- 8. Add automated tests for on-map helper data behavior that can be tested
-  without OBR rendering. Prioritize injury slot resolution, empty-vs-filled
-  injury filtering, complication/condition deduplication, severity color
-  precedence, and defensive scale clamping.
+- 8. [DONE] Automated tests for on-map helper data behavior. Covers injury slot
+  resolution (survivor vs other seriousCount), empty-vs-filled filtering,
+  complication/condition deduplication (case-insensitive), severity color
+  precedence (lethal > critical > serious > condition), scale clamping,
+  all builder output shapes/colors/IDs, and display-layer gating for
+  injuryDisplay/showConditions.
 - 9. Add performance guardrails for on-map redraws. Consider debouncing rapid
   item metadata changes, avoiding full scene redraws when only unrelated scene
   metadata changes, and documenting/limiting attachment counts for heavily
@@ -402,3 +433,7 @@ Quality / functionality backlog:
 - 14. Consider per-token size overrides only if playtesting shows scene-wide sizing
   is insufficient. If added, extend TokenDisplayOverrides with nullable
   markerScale/textScale and keep scene defaults as the fallback.
+- 15. Continue expanding coverage for currently untested source modules. Helper
+  and store coverage is strong, but coverage still reports 0% for the React
+  page/component files, background.ts, getTheme.ts, OBR store wrappers, and
+  small entry/lib modules.

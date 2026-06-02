@@ -25,5 +25,11 @@ module.exports = {
         project: ["./tsconfig.json", "./tsconfig.node.json"],
       },
     },
+    {
+      files: ["src/test/**/*.ts", "src/test/**/*.tsx"],
+      rules: {
+        "@typescript-eslint/no-explicit-any": "off",
+      },
+    },
   ],
 };

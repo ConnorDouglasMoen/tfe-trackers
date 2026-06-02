@@ -180,6 +180,40 @@ describe("itemMetadataHelpers", () => {
       expect(result.activeType).toBe("survivor");
       expect(result.survivor.strainMax).toBe(3);
     });
+
+    it("prefers the new tokenRecord key over the legacy characterData key when both are present", () => {
+      // If a token was somehow written with both keys, the new key should win.
+      const newRecord = createDefaultTokenRecord();
+      newRecord.displayName = "NewKey";
+      newRecord.survivor.strainMax = 7;
+
+      const legacyData = {
+        characterType: "survivor",
+        strainMax: 1,   // different value — should be ignored
+        strainCurrent: 0,
+        hasSerious: true,
+        hasCritical: false,
+        hasLethal: false,
+        seriousInjuries: [
+          { id: "s0", description: "", complications: [], treated: false },
+          { id: "s1", description: "", complications: [], treated: false },
+        ],
+        criticalInjury: { id: "c", description: "", complications: [], treated: false },
+        lethalInjury:   { id: "l", description: "", complications: [], treated: false },
+        conditions: [],
+      };
+
+      const mockItem = {
+        metadata: {
+          [getPluginId("tokenRecord")]:   newRecord,
+          [getPluginId("characterData")]: legacyData,
+        },
+      } as any;
+
+      const result = getTokenRecordFromItem(mockItem);
+      expect(result.survivor.strainMax).toBe(7);      // from new key
+      expect(result.displayName).toBe("NewKey");      // from new key
+    });
   });
 
   describe("getActiveDataFromItem", () => {

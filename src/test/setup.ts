@@ -115,6 +115,10 @@ vi.mock("@owlbear-rodeo/sdk", () => {
         },
         local: {
           deleteItems: vi.fn(async () => {}),
+          addItems: vi.fn(async () => {}),
+        },
+        grid: {
+          getDpi: vi.fn(async () => 150),
         },
         getMetadata: vi.fn(async () => ({})),
         setMetadata: vi.fn(async () => {}),
@@ -128,6 +132,7 @@ vi.mock("@owlbear-rodeo/sdk", () => {
     buildShape: () => new MockBuilder("SHAPE"),
     buildText: () => new MockBuilder("TEXT"),
     buildPath: () => new MockBuilder("PATH"),
+    isImage: (item: { type?: string }) => item.type === "IMAGE",
     Command: {
       MOVE: 0,
       LINE: 1,
