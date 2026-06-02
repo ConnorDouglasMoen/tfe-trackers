@@ -179,7 +179,26 @@ OBR.onReady(async () => {
     onClick: async (context) => {
       const itemId = context.items[0]?.id;
       if (itemId === undefined) return;
+
+      // Clear all TFE metadata and on-map attachments from the token.
       await clearTokenData(itemId);
+
+      // Also remove the token from this user's Action panel tracker list.
+      // clearTokenData only wipes OBR metadata; localStorage must be updated
+      // separately. The StorageEvent fired here will propagate to any open
+      // Action panel iframe so it re-renders without the cleared token.
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw !== null) {
+          const parsed: unknown = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter(
+              (v): v is string => typeof v === "string" && v !== itemId,
+            );
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+          }
+        }
+      } catch { /* ignore storage errors */ }
     },
   });
 

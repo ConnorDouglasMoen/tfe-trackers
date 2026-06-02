@@ -365,14 +365,9 @@ BUGS FIXED
 --------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
-- Delete src/displaySettings/ directory manually (still present)
-- Tune PLAYER_MENU_HEIGHT and GM_MENU_HEIGHT in background.ts once
-  confirmed in OBR
 - Appearance pass pending
 - Add User Guide
 - Consider using Red's Wound Markers for injuries.
-- Configure Player-Owned token tracking in the action panel, when room permissions allow for player ownership
-- Clear TFE Data button should remove token from Action Panel tracker
 
 Quality / functionality backlog:
 - 1. [DONE] Automated tests for characterDataHelpers migration and display-setting

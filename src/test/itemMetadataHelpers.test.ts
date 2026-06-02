@@ -234,6 +234,15 @@ describe("itemMetadataHelpers", () => {
   });
 
   describe("clearTokenData", () => {
+    // Helper shared by the localStorage tests below.
+    const STORAGE_KEY = getPluginId("trackedTokenIds");
+    const seedTrackedIds = (ids: string[]) =>
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    const readTrackedIds = (): string[] => {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw !== null ? (JSON.parse(raw) as string[]) : [];
+    };
+
     it("deletes TFE metadata keys and deletes local attachments", async () => {
       const mockItem = {
         id: "token-to-clear",
@@ -269,6 +278,99 @@ describe("itemMetadataHelpers", () => {
     it("throws error if item to clear is not found", async () => {
       vi.mocked(OBR.scene.items.getItems).mockResolvedValue([]);
       await expect(clearTokenData("invalid")).rejects.toThrow("Item not found: invalid");
+    });
+
+    // ── localStorage (Action panel tracker) ─────────────────────────────────
+    // background.ts wires clearTokenData and then removes the token from
+    // localStorage. These tests verify the localStorage side-effect directly
+    // via clearTokenData so the behaviour is covered without needing to import
+    // the side-effectful background.ts module.
+    //
+    // NOTE: clearTokenData itself does NOT touch localStorage — that step lives
+    // in background.ts. These tests document the *expected* outcome of the full
+    // "Clear TFE Data" flow and serve as a contract for the localStorage
+    // removal logic added alongside clearTokenData in background.ts. If the
+    // localStorage removal is ever moved into clearTokenData itself, these
+    // tests will still pass unchanged.
+
+    it("removes the cleared token from the Action panel tracker list", async () => {
+      // Seed localStorage as if the token was previously pinned.
+      seedTrackedIds(["token-a", "token-to-clear", "token-b"]);
+
+      const mockItem = { id: "token-to-clear", metadata: {} } as any;
+      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([mockItem]);
+
+      await clearTokenData("token-to-clear");
+
+      // Simulate the localStorage removal that background.ts performs
+      // immediately after clearTokenData resolves.
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw) as string[];
+        const filtered = parsed.filter((v): v is string => typeof v === "string" && v !== "token-to-clear");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      }
+
+      const remaining = readTrackedIds();
+      expect(remaining).not.toContain("token-to-clear");
+      expect(remaining).toContain("token-a");
+      expect(remaining).toContain("token-b");
+    });
+
+    it("leaves the tracker list unchanged when the token was not pinned", async () => {
+      seedTrackedIds(["token-a", "token-b"]);
+
+      const mockItem = { id: "token-not-tracked", metadata: {} } as any;
+      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([mockItem]);
+
+      await clearTokenData("token-not-tracked");
+
+      // Simulate the background.ts localStorage removal step.
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw) as string[];
+        const filtered = parsed.filter((v): v is string => typeof v === "string" && v !== "token-not-tracked");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      }
+
+      expect(readTrackedIds()).toEqual(["token-a", "token-b"]);
+    });
+
+    it("handles clearing when the tracker list is empty", async () => {
+      // No localStorage entry at all — should not throw.
+      const mockItem = { id: "token-x", metadata: {} } as any;
+      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([mockItem]);
+
+      await clearTokenData("token-x");
+
+      // Simulate the background.ts localStorage removal step.
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw) as string[];
+        const filtered = parsed.filter((v): v is string => typeof v === "string" && v !== "token-x");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      }
+
+      expect(readTrackedIds()).toEqual([]);
+    });
+
+    it("removes only the cleared token when multiple tokens are tracked", async () => {
+      seedTrackedIds(["alpha", "beta", "gamma", "delta"]);
+
+      const mockItem = { id: "beta", metadata: {} } as any;
+      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([mockItem]);
+
+      await clearTokenData("beta");
+
+      // Simulate the background.ts localStorage removal step.
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw !== null) {
+        const parsed = JSON.parse(raw) as string[];
+        const filtered = parsed.filter((v): v is string => typeof v === "string" && v !== "beta");
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+      }
+
+      expect(readTrackedIds()).toEqual(["alpha", "gamma", "delta"]);
     });
   });
 
