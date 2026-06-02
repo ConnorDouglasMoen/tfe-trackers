@@ -1,2 +1,0 @@
-// UNUSED — display settings were moved to scene metadata and rendered
-// inside the token menu (GM-only). This file can be deleted.
