@@ -15,14 +15,8 @@ const menuIcon = new URL(
 
 const contextMenuLabel = "TFE Trackers";
 
-/**
- * Embed heights (pixels).
- * Players see: type toggle, strain, injuries, conditions.
- * GMs see all of the above plus On-Map Display settings.
- * These values should be tuned once the UI is confirmed in OBR.
- */
-const PLAYER_MENU_HEIGHT = 420;
-const GM_MENU_HEIGHT = 560;
+// Embed heights (pixels).
+const TOKEN_MENU_HEIGHT = 600;
 
 OBR.onReady(async () => {
   fetch("/manifest.json")
@@ -59,11 +53,11 @@ OBR.onReady(async () => {
     ],
     embed: {
       url: "/src/tokenMenu/tokenMenu.html",
-      height: PLAYER_MENU_HEIGHT,
+      height: TOKEN_MENU_HEIGHT,
     },
   });
 
-  // GM context menu — always visible; taller to accommodate display settings.
+  // GM context menu — always visible.
   OBR.contextMenu.create({
     id: getPluginId("gm-menu"),
     icons: [
@@ -83,7 +77,7 @@ OBR.onReady(async () => {
     ],
     embed: {
       url: "/src/tokenMenu/tokenMenu.html",
-      height: GM_MENU_HEIGHT,
+      height: TOKEN_MENU_HEIGHT,
     },
   });
 

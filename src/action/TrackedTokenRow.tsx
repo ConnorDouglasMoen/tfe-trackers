@@ -3,13 +3,25 @@ import OBR, { Item } from "@owlbear-rodeo/sdk";
 import {
   TokenRecord,
   CharacterData,
-  InjurySlot,
   CharacterType,
   STRAIN_MIN,
   STRAIN_MAX,
   getActiveData,
-  setActiveData,
 } from "../characterDataHelpers";
+import {
+  applyStrainCurrent,
+  applyStrainMax,
+  applyCharacterType,
+  applyAddCondition,
+  applyRemoveCondition,
+  applyUpdateSeriousInjury,
+  applyUpdateCriticalInjury,
+  applyUpdateLethalInjury,
+  applySetHasCritical,
+  applySetHasLethal,
+  applyAdjustSeriousTier,
+  applySetDisplayName,
+} from "../tokenRecordMutations";
 import { getTokenRecordFromItem, writeTokenRecordToItem } from "../itemMetadataHelpers";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
 import StrainRow from "../components/StrainRow";
@@ -128,10 +140,8 @@ function ConditionsSection({
  * OBR item by ID (not via selection), so the GM can edit any token without
  * needing to select it first.
  *
- * The row header shows the token's name (with a numeric suffix when there are
- * duplicates), a "center on token" button, and an unpin button.
- * The body is an inline version of the TokenMenu editor (strain, injuries,
- * conditions) without the display-override section.
+ * All record mutations are delegated to pure helpers in tokenRecordMutations.ts
+ * so the logic stays consistent with TokenMenu and is tested independently.
  */
 export function TrackedTokenRow({
   item,
@@ -167,26 +177,16 @@ export function TrackedTokenRow({
   const data: CharacterData = getActiveData(record);
 
   /**
-   * Apply a patch to the active CharacterData, persist to OBR, and update
-   * local state. All mutation in this row flows through this function.
+   * Apply a mutation function to the current record, persist to OBR, and
+   * update local state. All mutations in this row flow through this function.
+   *
+   * The mutation function receives the current record and returns the new
+   * record — matching the signature of all helpers in tokenRecordMutations.ts.
    */
-  const applyDataPatch = useCallback(
-    (patch: Partial<CharacterData>) => {
+  const applyMutation = useCallback(
+    (mutate: (r: TokenRecord) => TokenRecord) => {
       setRecord((prev) => {
-        const active = getActiveData(prev);
-        const updated = setActiveData(prev, { ...active, ...patch });
-        void writeTokenRecordToItem(item.id, updated);
-        return updated;
-      });
-    },
-    [item.id],
-  );
-
-  /** Apply a patch at the TokenRecord level (e.g. characterType, displayAlias). */
-  const applyRecordPatch = useCallback(
-    (patch: Partial<TokenRecord>) => {
-      setRecord((prev) => {
-        const updated = { ...prev, ...patch };
+        const updated = mutate(prev);
         void writeTokenRecordToItem(item.id, updated);
         return updated;
       });
@@ -204,7 +204,9 @@ export function TrackedTokenRow({
   /** Commit the edited name — empty or matching item name clears displayName. */
   const commitName = () => {
     const trimmed = nameInput.trim();
-    applyRecordPatch({ displayName: trimmed === item.name ? "" : trimmed });
+    applyMutation((r) =>
+      applySetDisplayName(r, trimmed === item.name ? "" : trimmed),
+    );
     setIsEditingName(false);
   };
 
@@ -214,19 +216,6 @@ export function TrackedTokenRow({
 
   const isSurvivor = data.characterType === "survivor";
   const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
-
-  const adjustSerious = (delta: 1 | -1) => {
-    const next = seriousLevel + delta;
-    if (next === 0) applyDataPatch({ hasSerious: false });
-    else if (next === 1) applyDataPatch({ hasSerious: true, seriousCount: 1 });
-    else if (next === 2) applyDataPatch({ hasSerious: true, seriousCount: 2 });
-  };
-
-  const updateSeriousInjury = (index: 0 | 1, patch: Partial<InjurySlot>) => {
-    const updated = [...data.seriousInjuries] as [InjurySlot, InjurySlot];
-    updated[index] = { ...updated[index], ...patch };
-    applyDataPatch({ seriousInjuries: updated });
-  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -375,7 +364,7 @@ export function TrackedTokenRow({
             {(["survivor", "other"] as const).map((type: CharacterType) => (
               <button
                 key={type}
-                onClick={() => applyRecordPatch({ activeType: type })}
+                onClick={() => applyMutation((r) => applyCharacterType(r, type))}
                 className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
                   data.characterType === type
                     ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
@@ -396,8 +385,8 @@ export function TrackedTokenRow({
               <div className="flex items-center gap-1.5 text-xs text-text-secondary dark:text-text-secondary-dark">
                 <span>Max: {data.strainMax}</span>
                 <Stepper
-                  onDecrement={() => applyDataPatch({ strainMax: Math.max(STRAIN_MIN, data.strainMax - 1) })}
-                  onIncrement={() => applyDataPatch({ strainMax: Math.min(STRAIN_MAX, data.strainMax + 1) })}
+                  onDecrement={() => applyMutation((r) => applyStrainMax(r, data.strainMax - 1))}
+                  onIncrement={() => applyMutation((r) => applyStrainMax(r, data.strainMax + 1))}
                   disableDecrement={data.strainMax <= STRAIN_MIN}
                   disableIncrement={data.strainMax >= STRAIN_MAX}
                 />
@@ -406,11 +395,7 @@ export function TrackedTokenRow({
             <StrainRow
               strainMax={data.strainMax}
               strainCurrent={data.strainCurrent}
-              onChange={(current) =>
-                applyDataPatch({
-                  strainCurrent: Math.max(0, Math.min(data.strainMax, current)),
-                })
-              }
+              onChange={(current) => applyMutation((r) => applyStrainCurrent(r, current))}
             />
             <div className="mt-0.5 text-2xs text-text-disabled dark:text-text-disabled-dark">
               {data.strainCurrent} / {data.strainMax} taken
@@ -429,8 +414,8 @@ export function TrackedTokenRow({
                   <div className="flex items-center gap-0.5">
                     <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">S</span>
                     <Stepper
-                      onDecrement={() => adjustSerious(-1)}
-                      onIncrement={() => adjustSerious(1)}
+                      onDecrement={() => applyMutation((r) => applyAdjustSeriousTier(r, -1))}
+                      onIncrement={() => applyMutation((r) => applyAdjustSeriousTier(r, 1))}
                       disableDecrement={seriousLevel <= 0}
                       disableIncrement={seriousLevel >= 2}
                     />
@@ -438,8 +423,8 @@ export function TrackedTokenRow({
                   <div className="flex items-center gap-0.5">
                     <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">C</span>
                     <Stepper
-                      onDecrement={() => applyDataPatch({ hasCritical: false })}
-                      onIncrement={() => applyDataPatch({ hasCritical: true })}
+                      onDecrement={() => applyMutation((r) => applySetHasCritical(r, false))}
+                      onIncrement={() => applyMutation((r) => applySetHasCritical(r, true))}
                       disableDecrement={!data.hasCritical}
                       disableIncrement={data.hasCritical}
                     />
@@ -447,8 +432,8 @@ export function TrackedTokenRow({
                   <div className="flex items-center gap-0.5">
                     <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">L</span>
                     <Stepper
-                      onDecrement={() => applyDataPatch({ hasLethal: false })}
-                      onIncrement={() => applyDataPatch({ hasLethal: true })}
+                      onDecrement={() => applyMutation((r) => applySetHasLethal(r, false))}
+                      onIncrement={() => applyMutation((r) => applySetHasLethal(r, true))}
                       disableDecrement={!data.hasLethal}
                       disableIncrement={data.hasLethal}
                     />
@@ -463,14 +448,14 @@ export function TrackedTokenRow({
                     slot={data.seriousInjuries[0]}
                     severity="serious"
                     label={isSurvivor || data.seriousCount === 2 ? "Serious #1" : "Serious"}
-                    onUpdate={(patch) => updateSeriousInjury(0, patch)}
+                    onUpdate={(patch) => applyMutation((r) => applyUpdateSeriousInjury(r, 0, patch))}
                   />
                   {(isSurvivor || data.seriousCount === 2) && (
                     <InjurySlotCard
                       slot={data.seriousInjuries[1]}
                       severity="serious"
                       label="Serious #2"
-                      onUpdate={(patch) => updateSeriousInjury(1, patch)}
+                      onUpdate={(patch) => applyMutation((r) => applyUpdateSeriousInjury(r, 1, patch))}
                     />
                   )}
                 </>
@@ -480,7 +465,7 @@ export function TrackedTokenRow({
                   slot={data.criticalInjury}
                   severity="critical"
                   label="Critical"
-                  onUpdate={(patch) => applyDataPatch({ criticalInjury: { ...data.criticalInjury, ...patch } })}
+                  onUpdate={(patch) => applyMutation((r) => applyUpdateCriticalInjury(r, patch))}
                 />
               )}
               {data.hasLethal && (
@@ -488,7 +473,7 @@ export function TrackedTokenRow({
                   slot={data.lethalInjury}
                   severity="lethal"
                   label="Lethal"
-                  onUpdate={(patch) => applyDataPatch({ lethalInjury: { ...data.lethalInjury, ...patch } })}
+                  onUpdate={(patch) => applyMutation((r) => applyUpdateLethalInjury(r, patch))}
                 />
               )}
               {!data.hasSerious && !data.hasCritical && !data.hasLethal && (
@@ -502,16 +487,8 @@ export function TrackedTokenRow({
           {/* ── Conditions ────────────────────────────────────────────── */}
           <ConditionsSection
             conditions={data.conditions}
-            onAdd={(text) => {
-              const trimmed = text.trim();
-              if (trimmed === "") return;
-              applyDataPatch({ conditions: [...data.conditions, trimmed] });
-            }}
-            onRemove={(index) =>
-              applyDataPatch({
-                conditions: data.conditions.filter((_, i) => i !== index),
-              })
-            }
+            onAdd={(text) => applyMutation((r) => applyAddCondition(r, text))}
+            onRemove={(index) => applyMutation((r) => applyRemoveCondition(r, index))}
           />
         </div>
       )}

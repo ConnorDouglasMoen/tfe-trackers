@@ -7,10 +7,27 @@ import {
   TokenDisplayOverrides,
   createDefaultTokenRecord,
   getActiveData,
-  setActiveData,
   STRAIN_MAX,
   STRAIN_MIN,
 } from "./characterDataHelpers";
+import {
+  applyStrainCurrent,
+  applyStrainMax,
+  applyCharacterType,
+  applyAddCondition,
+  applyRemoveCondition,
+  applyUpdateSeriousInjury,
+  applyUpdateCriticalInjury,
+  applyUpdateLethalInjury,
+  applySetHasSerious,
+  applySetSeriousCount,
+  applySetHasCritical,
+  applySetHasLethal,
+  applySetDisplayName,
+} from "./tokenRecordMutations";
+
+// Re-export for consumers that import these from the store file.
+export { STRAIN_MAX, STRAIN_MIN };
 
 interface TokenRecordState {
   record: TokenRecord;
@@ -47,69 +64,42 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
   setRecord: (record) => set({ record, data: getActiveData(record) }),
   setWriteToItem: (writeToItem) => set({ writeToItem }),
 
+  // Delegate all mutations to pure helpers in tokenRecordMutations.ts.
   setCharacterType: (type) =>
-    set((state) => mutate(state, { ...state.record, activeType: type })),
+    set((state) => mutate(state, applyCharacterType(state.record, type))),
 
   setStrainCurrent: (current) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      const clamped = Math.max(0, Math.min(active.strainMax, current));
-      return mutate(state, setActiveData(state.record, { ...active, strainCurrent: clamped }));
-    }),
+    set((state) => mutate(state, applyStrainCurrent(state.record, current))),
 
   setStrainMax: (max) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      const clamped = Math.max(STRAIN_MIN, Math.min(STRAIN_MAX, max));
-      const strainCurrent = Math.min(active.strainCurrent, clamped);
-      return mutate(state, setActiveData(state.record, { ...active, strainMax: clamped, strainCurrent }));
-    }),
+    set((state) => mutate(state, applyStrainMax(state.record, max))),
 
   updateSeriousInjury: (index, patch) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      const updated = [...active.seriousInjuries] as [InjurySlot, InjurySlot];
-      updated[index] = { ...updated[index], ...patch };
-      return mutate(state, setActiveData(state.record, { ...active, seriousInjuries: updated }));
-    }),
+    set((state) => mutate(state, applyUpdateSeriousInjury(state.record, index, patch))),
 
   updateCriticalInjury: (patch) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, criticalInjury: { ...active.criticalInjury, ...patch } }));
-    }),
+    set((state) => mutate(state, applyUpdateCriticalInjury(state.record, patch))),
 
   updateLethalInjury: (patch) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, lethalInjury: { ...active.lethalInjury, ...patch } }));
-    }),
+    set((state) => mutate(state, applyUpdateLethalInjury(state.record, patch))),
 
   setHasSerious: (hasSerious) =>
-    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasSerious }))),
+    set((state) => mutate(state, applySetHasSerious(state.record, hasSerious))),
 
   setSeriousCount: (seriousCount) =>
-    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), seriousCount }))),
+    set((state) => mutate(state, applySetSeriousCount(state.record, seriousCount))),
 
   setHasCritical: (hasCritical) =>
-    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasCritical }))),
+    set((state) => mutate(state, applySetHasCritical(state.record, hasCritical))),
 
   setHasLethal: (hasLethal) =>
-    set((state) => mutate(state, setActiveData(state.record, { ...getActiveData(state.record), hasLethal }))),
+    set((state) => mutate(state, applySetHasLethal(state.record, hasLethal))),
 
   addCondition: (text) =>
-    set((state) => {
-      const trimmed = text.trim();
-      if (trimmed === "") return state;
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, conditions: [...active.conditions, trimmed] }));
-    }),
+    set((state) => mutate(state, applyAddCondition(state.record, text))),
 
   removeCondition: (index) =>
-    set((state) => {
-      const active = getActiveData(state.record);
-      return mutate(state, setActiveData(state.record, { ...active, conditions: active.conditions.filter((_, i) => i !== index) }));
-    }),
+    set((state) => mutate(state, applyRemoveCondition(state.record, index))),
 
   // Patch one or more per-token display overrides (null = revert to scene default).
   setDisplayOverride: (patch) =>
@@ -120,7 +110,7 @@ export const useCharacterDataStore = create<TokenRecordState>()((set) => ({
 
   // Update the custom on-map name bubble.
   setDisplayName: (displayName) =>
-    set((state) => mutate(state, { ...state.record, displayName })),
+    set((state) => mutate(state, applySetDisplayName(state.record, displayName))),
 }));
 
 function mutate(

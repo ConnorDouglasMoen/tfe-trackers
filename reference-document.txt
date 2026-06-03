@@ -232,6 +232,8 @@ FILE MAP
 --------------------------------------------------------------------
 src/
   characterDataHelpers.ts     — types, factories, guards, migration
+  tokenRecordMutations.ts     — pure mutation helpers for TokenRecord/CharacterData;
+                                used by useCharacterDataStore and TrackedTokenRow
   itemMetadataHelpers.ts      — read/write TokenRecord + hidden flag;
                                 getActiveDataFromItem
   useCharacterDataStore.ts    — Zustand store for TokenRecord
@@ -280,6 +282,10 @@ src/
   test/
     characterDataHelpers.test.ts   — types, factories, guards, migration,
                                      constants, resolveDisplaySettings
+    tokenRecordMutations.test.ts    — all pure mutation helpers: strain clamping,
+                                     type switching, conditions, injury slots,
+                                     seriousTier stepper, displayName, immutability,
+                                     cross-blob isolation
     itemMetadataHelpers.test.ts    — read/write/clear metadata; hidden flag;
                                      legacy key fallback; new-key-wins precedence
     mathHelpers.test.ts            — getFillPortion, createRoundedRectangle,
@@ -368,6 +374,7 @@ TODO / OPEN ITEMS
 - Appearance pass pending
 - Add User Guide
 - Consider using Red's Wound Markers for injuries.
+- Make Token Menu's Token Display section a dropdown that defaults to closed
 
 Quality / functionality backlog:
 - 1. [DONE] Automated tests for characterDataHelpers migration and display-setting
@@ -375,11 +382,16 @@ Quality / functionality backlog:
   legacy location -> description migration, missing displayOverrides,
   displayAlias -> displayName migration, markerScale/textScale defaults,
   constants, getActiveData/setActiveData, and isTokenRecord edge cases.
-- 2. Centralize token-record mutation helpers. Move repeated operations such as
-  clamping strain, adding/removing conditions, updating injury slots, switching
-  active type, and normalizing displayName into pure helper functions with unit
-  tests. Stores/components should call the same helpers instead of duplicating
-  patch logic.
+- 2. [DONE] Centralize token-record mutation helpers. Pure functions extracted
+  into src/tokenRecordMutations.ts: applyStrainCurrent, applyStrainMax,
+  applyCharacterType, applyAddCondition, applyRemoveCondition,
+  applyUpdateSeriousInjury, applyUpdateCriticalInjury, applyUpdateLethalInjury,
+  applySetHasSerious, applySetSeriousCount, applySetHasCritical,
+  applySetHasLethal, applyAdjustSeriousTier, applySetDisplayName, applyDataPatch.
+  useCharacterDataStore and TrackedTokenRow both delegate to these helpers.
+  TrackedTokenRow's applyMutation callback now takes (r: TokenRecord) => TokenRecord
+  instead of separate applyDataPatch/applyRecordPatch functions.
+  Tests in src/test/tokenRecordMutations.test.ts.
 - 3. Extract a shared TokenEditor component used by both TokenMenu.tsx and
   TrackedTokenRow.tsx. Keep wrappers responsible for persistence target
   (selection vs item ID), but share the Survivor/Other toggle, strain editor,
