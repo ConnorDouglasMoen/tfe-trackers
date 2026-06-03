@@ -187,6 +187,11 @@ interface TokenEditorProps extends TokenEditorCallbacks {
    */
   topRowExtra?: React.ReactNode;
   /**
+   * Optional content rendered in its own row directly below the type toggle.
+   * Used by TokenMenu for the name input row.
+   */
+  belowToggleContent?: React.ReactNode;
+  /**
    * Heading level for all section headings.
    * TokenMenu is a top-level panel → "h2".
    * TrackedTokenRow is nested inside Action → "h3".
@@ -206,6 +211,7 @@ interface TokenEditorProps extends TokenEditorCallbacks {
 export function TokenEditor({
   data,
   topRowExtra,
+  belowToggleContent,
   headingLevel = "h2",
   onSetCharacterType,
   onSetStrainCurrent,
@@ -247,6 +253,9 @@ export function TokenEditor({
         {/* Renders the "Open Editor" button in TokenMenu; nothing in TrackedTokenRow. */}
         {topRowExtra}
       </div>
+
+      {/* Renders the name input row in TokenMenu; nothing in TrackedTokenRow. */}
+      {belowToggleContent}
 
       {/* ── Strain ────────────────────────────────────────────────────── */}
       <section>

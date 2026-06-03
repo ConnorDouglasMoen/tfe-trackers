@@ -218,26 +218,30 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
     <div className={`${mode === "DARK" ? "dark" : ""} h-screen overflow-y-auto`}>
       <div className="flex flex-col gap-3 px-3 py-2">
 
-        {/* ── Name Bubble ────────────────────────────────────────────── */}
-        {/* Shown here as a top-level section. TrackedTokenRow uses its own
-            inline header input for the name instead. */}
-        <section>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-            Name
-          </h2>
-          {/* Confirms on blur/Enter; empty value hides the on-map name bubble. */}
-          <TextInput
-            value={record.displayName}
-            onConfirm={(v) => setDisplayName(v)}
-            placeholder="Add displayed token name"
-          />
-        </section>
-
-        {/* ── Shared editor: type toggle, strain, injuries, conditions ─ */}
+        {/* ── Shared editor: type toggle, name row, strain, injuries, conditions ─ */}
         <TokenEditor
           data={data}
           headingLevel="h2"
           topRowExtra={openEditorButton}
+          belowToggleContent={
+            /* Name input sits below the type toggle, above strain.
+               Clear button appears only when a name is set. */
+            <div className="flex items-center gap-2">
+              <TextInput
+                value={record.displayName}
+                onConfirm={(v) => setDisplayName(v)}
+                placeholder="Add displayed token name"
+              />
+              {record.displayName !== "" && (
+                <button
+                  onClick={() => setDisplayName("")}
+                  className="shrink-0 rounded px-1 py-0.5 text-2xs font-semibold uppercase tracking-wide text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          }
           onSetCharacterType={setCharacterType}
           onSetStrainCurrent={setStrainCurrent}
           onSetStrainMax={setStrainMax}

@@ -379,7 +379,6 @@ TODO / OPEN ITEMS
 - Appearance pass pending
 - Add User Guide
 - Consider using Red's Wound Markers for injuries.
-- Make Token Menu's Token Display section a dropdown that defaults to closed
 
 Quality / functionality backlog:
 - 1. [DONE] Automated tests for characterDataHelpers migration and display-setting
