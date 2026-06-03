@@ -1,39 +1,40 @@
+/**
+ * TokenMenu
+ *
+ * Context-menu embed for per-token editing. Drives useCharacterDataStore
+ * (Zustand) and persists to the current OBR selection.
+ *
+ * Shared editor content (type toggle, strain, injuries, conditions) is
+ * delegated to TokenEditor. This wrapper retains:
+ *   - OBR selection subscription and store initialisation
+ *   - Name section (unique to this context — TrackedTokenRow uses an
+ *     inline header input instead)
+ *   - "Open Editor" popover button (GM only, hidden inside the popover)
+ *   - Token display overrides section (not present in TrackedTokenRow)
+ */
+
 import { useEffect, useState } from "react";
 import OBR, { Item } from "@owlbear-rodeo/sdk";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useCharacterDataStore } from "../useCharacterDataStore";
 import { getTokenRecordFromSelection } from "../itemMetadataHelpers";
 import { getPluginId } from "../getPluginId";
-import { STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
-import StrainRow from "../components/StrainRow";
-import InjurySlotCard from "../components/InjurySlotCard";
+import { TokenEditor } from "../components/TokenEditor";
 import TextInput from "../components/TextInput";
 
-/** Small +/- stepper. */
-function Stepper({
-  onDecrement, onIncrement, disableDecrement, disableIncrement,
-}: {
-  onDecrement: () => void; onIncrement: () => void;
-  disableDecrement: boolean; disableIncrement: boolean;
-}): React.JSX.Element {
-  const base = "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
-  const active = "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
-  const disabled = "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
-  return (
-    <div className="flex items-center gap-0.5">
-      <button onClick={onDecrement} disabled={disableDecrement} className={`${base} ${disableDecrement ? disabled : active}`} aria-label="Decrease">−</button>
-      <button onClick={onIncrement} disabled={disableIncrement} className={`${base} ${disableIncrement ? disabled : active}`} aria-label="Increase">+</button>
-    </div>
-  );
-}
+// ─── Token Display Overrides ──────────────────────────────────────────────────
 
 /**
  * Per-token on-map display overrides. Each control has three states:
  *   - Null ("Scene"): inherit from scene-level setting in the Action panel.
  *   - True/"all" ("Show" / "All"): force-show on this token.
  *   - False/"filled-only"/"none": force the chosen value on this token.
+ *
+ * Rendered only in the context menu — the Action panel edits scene-level
+ * settings and doesn't need per-token overrides in the tracked-token rows.
  */
 function TokenDisplaySection(): React.JSX.Element {
+  const [isOpen, setIsOpen] = useState(false);
   const overrides = useCharacterDataStore((state) => state.record.displayOverrides);
   const setDisplayOverride = useCharacterDataStore((state) => state.setDisplayOverride);
 
@@ -53,10 +54,26 @@ function TokenDisplaySection(): React.JSX.Element {
 
   return (
     <section>
-      <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-        Token Display
-      </h2>
-      <div className="flex flex-col gap-2">
+      {/* Collapsible header — defaults to closed */}
+      <button
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-left"
+        aria-expanded={isOpen}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          width="10"
+          height="10"
+          aria-hidden="true"
+          className={`shrink-0 text-text-secondary dark:text-text-secondary-dark transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+        >
+          <path d="M5 3l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+          Token Display Settings
+        </h2>
+      </button>
+      {isOpen && <div className="mt-1.5 flex flex-col gap-2">
 
         {/* Strain override */}
         <div className="flex items-center justify-between">
@@ -122,50 +139,12 @@ function TokenDisplaySection(): React.JSX.Element {
           </div>
         </div>
 
-      </div>
+      </div>}
     </section>
   );
 }
 
-/** Conditions input + saved list. */
-function ConditionsSection(): React.JSX.Element {
-  const conditions = useCharacterDataStore((state) => state.data.conditions);
-  const addCondition = useCharacterDataStore((state) => state.addCondition);
-  const removeCondition = useCharacterDataStore((state) => state.removeCondition);
-  const [inputValue, setInputValue] = useState("");
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") { e.preventDefault(); addCondition(inputValue); setInputValue(""); }
-  };
-
-  return (
-    <section>
-      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Conditions</h2>
-      <input
-        type="text" value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Add condition, press Enter…"
-        className="w-full rounded-lg border border-white/10 bg-black/10 px-2 py-1 text-sm text-text-primary outline-none placeholder:text-text-disabled dark:bg-white/5 dark:text-text-primary-dark dark:placeholder:text-text-disabled-dark"
-      />
-      {conditions.length > 0 && (
-        <ul className="mt-1.5 flex flex-col gap-1">
-          {conditions.map((condition, index) => (
-            <li key={index} className="flex items-center justify-between gap-2 rounded-md bg-black/10 px-2 py-1 dark:bg-white/5">
-              <span className="text-sm text-text-primary dark:text-text-primary-dark">{condition}</span>
-              <button onClick={() => removeCondition(index)} aria-label={`Remove condition: ${condition}`} className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark">
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
+// ─── TokenMenu ────────────────────────────────────────────────────────────────
 
 export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
@@ -184,6 +163,8 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
   const setSeriousCount = useCharacterDataStore((state) => state.setSeriousCount);
   const setHasCritical = useCharacterDataStore((state) => state.setHasCritical);
   const setHasLethal = useCharacterDataStore((state) => state.setHasLethal);
+  const addCondition = useCharacterDataStore((state) => state.addCondition);
+  const removeCondition = useCharacterDataStore((state) => state.removeCondition);
   const setDisplayName = useCharacterDataStore((state) => state.setDisplayName);
 
   const [initDone, setInitDone] = useState(false);
@@ -200,62 +181,51 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
 
   if (!initDone) return <></>;
 
-  const isSurvivor = data.characterType === "survivor";
-  const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
-  const adjustSerious = (delta: 1 | -1) => {
+  /**
+   * Adapts the store's setHasSerious/setSeriousCount pair into the unified
+   * tier-stepping interface expected by TokenEditor.
+   * Tier: 0 = none, 1 = one slot, 2 = two slots.
+   */
+  const handleAdjustSeriousTier = (delta: 1 | -1) => {
+    const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
     const next = seriousLevel + delta;
-    if (next === 0) setHasSerious(false);
+    if (next <= 0) setHasSerious(false);
     else if (next === 1) { setHasSerious(true); setSeriousCount(1); }
-    else if (next === 2) { setHasSerious(true); setSeriousCount(2); }
+    else if (next >= 2) { setHasSerious(true); setSeriousCount(2); }
   };
-  const adjustCritical = (delta: 1 | -1) => setHasCritical(delta > 0);
-  const adjustLethal = (delta: 1 | -1) => setHasLethal(delta > 0);
+
+  /** GM-only "Open Editor" button rendered in the type-toggle row via topRowExtra. */
+  const openEditorButton =
+    role === "GM" && !isPopover ? (
+      <button
+        onClick={() =>
+          OBR.popover.open({
+            id: getPluginId("token-editor"),
+            url: "/src/tokenMenu/tokenMenu.html?popover=1",
+            height: 600,
+            width: 380,
+            anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+            transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
+          })
+        }
+        className="rounded-lg bg-black/10 px-3 py-1 text-xs text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15"
+      >
+        Open Editor
+      </button>
+    ) : undefined;
 
   return (
     <div className={`${mode === "DARK" ? "dark" : ""} h-screen overflow-y-auto`}>
       <div className="flex flex-col gap-3 px-3 py-2">
 
-        {/* ── Top row: Character Type Toggle + Open Full Editor ─── */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 rounded-lg bg-black/10 p-0.5 dark:bg-white/10">
-            {(["survivor", "other"] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setCharacterType(type)}
-                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
-                  data.characterType === type
-                    ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                    : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-                }`}
-              >
-                {type === "survivor" ? "Survivor" : "Other"}
-              </button>
-            ))}
-          </div>
-          {/* Open Full Editor — GM only, hidden inside the popover itself */}
-          {role === "GM" && !isPopover && (
-            <button
-              onClick={() =>
-                OBR.popover.open({
-                  id: getPluginId("token-editor"),
-                  url: "/src/tokenMenu/tokenMenu.html?popover=1",
-                  height: 600,
-                  width: 380,
-                  anchorOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-                  transformOrigin: { horizontal: "CENTER", vertical: "CENTER" },
-                })
-              }
-              className="rounded-lg bg-black/10 px-3 py-1 text-xs text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15"
-            >
-              Open Editor
-            </button>
-          )}
-        </div>
-
-        {/* ── Name Bubble ────────────────────────────────────────── */}
+        {/* ── Name Bubble ────────────────────────────────────────────── */}
+        {/* Shown here as a top-level section. TrackedTokenRow uses its own
+            inline header input for the name instead. */}
         <section>
-          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Name</h2>
-          {/* Confirm on blur/Enter; clears to empty to hide the on-map bubble */}
+          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+            Name
+          </h2>
+          {/* Confirms on blur/Enter; empty value hides the on-map name bubble. */}
           <TextInput
             value={record.displayName}
             onConfirm={(v) => setDisplayName(v)}
@@ -263,68 +233,27 @@ export default function TokenMenu({ isPopover }: { isPopover: boolean }): React.
           />
         </section>
 
-        {/* ── Strain ─────────────────────────────────────────────── */}
-        <section>
-          <div className="mb-1 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Strain</h2>
-            <div className="flex items-center gap-1.5 text-xs text-text-secondary dark:text-text-secondary-dark">
-              <span>Max: {data.strainMax}</span>
-              <Stepper
-                onDecrement={() => setStrainMax(data.strainMax - 1)}
-                onIncrement={() => setStrainMax(data.strainMax + 1)}
-                disableDecrement={data.strainMax <= STRAIN_MIN}
-                disableIncrement={data.strainMax >= STRAIN_MAX}
-              />
-            </div>
-          </div>
-          <StrainRow strainMax={data.strainMax} strainCurrent={data.strainCurrent} onChange={setStrainCurrent} />
-          <div className="mt-0.5 text-2xs text-text-disabled dark:text-text-disabled-dark">
-            {data.strainCurrent} / {data.strainMax} taken
-          </div>
-        </section>
+        {/* ── Shared editor: type toggle, strain, injuries, conditions ─ */}
+        <TokenEditor
+          data={data}
+          headingLevel="h2"
+          topRowExtra={openEditorButton}
+          onSetCharacterType={setCharacterType}
+          onSetStrainCurrent={setStrainCurrent}
+          onSetStrainMax={setStrainMax}
+          onUpdateSeriousInjury={updateSeriousInjury}
+          onUpdateCriticalInjury={updateCriticalInjury}
+          onUpdateLethalInjury={updateLethalInjury}
+          onAdjustSeriousTier={handleAdjustSeriousTier}
+          onSetHasCritical={setHasCritical}
+          onSetHasLethal={setHasLethal}
+          onAddCondition={addCondition}
+          onRemoveCondition={removeCondition}
+        />
 
-        {/* ── Injuries ───────────────────────────────────────────── */}
-        <section>
-          <div className="mb-1 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">Injuries</h2>
-            {!isSurvivor && (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-0.5">
-                  <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">S</span>
-                  <Stepper onDecrement={() => adjustSerious(-1)} onIncrement={() => adjustSerious(1)} disableDecrement={seriousLevel <= 0} disableIncrement={seriousLevel >= 2} />
-                </div>
-                <div className="flex items-center gap-0.5">
-                  <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">C</span>
-                  <Stepper onDecrement={() => adjustCritical(-1)} onIncrement={() => adjustCritical(1)} disableDecrement={!data.hasCritical} disableIncrement={data.hasCritical} />
-                </div>
-                <div className="flex items-center gap-0.5">
-                  <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">L</span>
-                  <Stepper onDecrement={() => adjustLethal(-1)} onIncrement={() => adjustLethal(1)} disableDecrement={!data.hasLethal} disableIncrement={data.hasLethal} />
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            {data.hasSerious && (
-              <>
-                <InjurySlotCard slot={data.seriousInjuries[0]} severity="serious" label={isSurvivor || data.seriousCount === 2 ? "Serious #1" : "Serious"} onUpdate={(patch) => updateSeriousInjury(0, patch)} />
-                {(isSurvivor || data.seriousCount === 2) && (
-                  <InjurySlotCard slot={data.seriousInjuries[1]} severity="serious" label="Serious #2" onUpdate={(patch) => updateSeriousInjury(1, patch)} />
-                )}
-              </>
-            )}
-            {data.hasCritical && <InjurySlotCard slot={data.criticalInjury} severity="critical" label="Critical" onUpdate={updateCriticalInjury} />}
-            {data.hasLethal && <InjurySlotCard slot={data.lethalInjury} severity="lethal" label="Lethal" onUpdate={updateLethalInjury} />}
-            {!data.hasSerious && !data.hasCritical && !data.hasLethal && (
-              <p className="text-xs text-text-disabled dark:text-text-disabled-dark">No injuries. Use the +/- buttons above to add injury slots.</p>
-            )}
-          </div>
-        </section>
-
-        {/* ── Conditions ─────────────────────────────────────────── */}
-        <ConditionsSection />
-
-        {/* ── Token Display Overrides ─────────────────────────── */}
+        {/* ── Token Display Overrides ─────────────────────────────────── */}
+        {/* Scene-level settings live in the Action panel (GM only).
+            These per-token overrides are context-menu only. */}
         <TokenDisplaySection />
 
       </div>

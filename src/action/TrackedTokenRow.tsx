@@ -1,11 +1,28 @@
+/**
+ * TrackedTokenRow
+ *
+ * A collapsible row in the Action panel's Tracked Tokens list.
+ *
+ * Manages its own local TokenRecord state and writes changes directly to the
+ * OBR item by ID (not via selection), so the GM can edit any token without
+ * needing to select it first.
+ *
+ * All record mutations are delegated to pure helpers in tokenRecordMutations.ts
+ * so the logic stays consistent with TokenMenu and is tested independently.
+ *
+ * Shared editor content (type toggle, strain, injuries, conditions) is
+ * rendered via TokenEditor. This wrapper retains:
+ *   - Collapsible row chrome (header, chevron, center/unpin buttons)
+ *   - Inline name editing in the header row (TokenMenu uses a dedicated
+ *     Name section instead)
+ *   - applyMutation pattern for writing by item ID
+ */
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import OBR, { Item } from "@owlbear-rodeo/sdk";
 import {
   TokenRecord,
   CharacterData,
-  CharacterType,
-  STRAIN_MIN,
-  STRAIN_MAX,
   getActiveData,
 } from "../characterDataHelpers";
 import {
@@ -24,124 +41,16 @@ import {
 } from "../tokenRecordMutations";
 import { getTokenRecordFromItem, writeTokenRecordToItem } from "../itemMetadataHelpers";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
-import StrainRow from "../components/StrainRow";
-import InjurySlotCard from "../components/InjurySlotCard";
-
-// ─── Small helper components ────────────────────────────────────────────────
-
-/** +/- stepper, same styling as TokenMenu. */
-function Stepper({
-  onDecrement,
-  onIncrement,
-  disableDecrement,
-  disableIncrement,
-}: {
-  onDecrement: () => void;
-  onIncrement: () => void;
-  disableDecrement: boolean;
-  disableIncrement: boolean;
-}): React.JSX.Element {
-  const base =
-    "flex size-5 items-center justify-center rounded text-sm font-bold leading-none transition duration-150";
-  const active =
-    "bg-black/10 text-text-secondary hover:bg-black/20 dark:bg-white/10 dark:text-text-secondary-dark dark:hover:bg-white/15";
-  const disabled =
-    "cursor-not-allowed text-text-disabled dark:text-text-disabled-dark";
-  return (
-    <div className="flex items-center gap-0.5">
-      <button
-        onClick={onDecrement}
-        disabled={disableDecrement}
-        className={`${base} ${disableDecrement ? disabled : active}`}
-        aria-label="Decrease"
-      >
-        −
-      </button>
-      <button
-        onClick={onIncrement}
-        disabled={disableIncrement}
-        className={`${base} ${disableIncrement ? disabled : active}`}
-        aria-label="Increase"
-      >
-        +
-      </button>
-    </div>
-  );
-}
-
-// ─── Conditions sub-section ──────────────────────────────────────────────────
-
-function ConditionsSection({
-  conditions,
-  onAdd,
-  onRemove,
-}: {
-  conditions: string[];
-  onAdd: (text: string) => void;
-  onRemove: (index: number) => void;
-}): React.JSX.Element {
-  const [inputValue, setInputValue] = useState("");
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      onAdd(inputValue);
-      setInputValue("");
-    }
-  };
-
-  return (
-    <section>
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-        Conditions
-      </h3>
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Add condition, press Enter…"
-        className="w-full rounded-lg border border-white/10 bg-black/10 px-2 py-1 text-sm text-text-primary outline-none placeholder:text-text-disabled dark:bg-white/5 dark:text-text-primary-dark dark:placeholder:text-text-disabled-dark"
-      />
-      {conditions.length > 0 && (
-        <ul className="mt-1.5 flex flex-col gap-1">
-          {conditions.map((condition, index) => (
-            <li
-              key={index}
-              className="flex items-center justify-between gap-2 rounded-md bg-black/10 px-2 py-1 dark:bg-white/5"
-            >
-              <span className="text-sm text-text-primary dark:text-text-primary-dark">
-                {condition}
-              </span>
-              <button
-                onClick={() => onRemove(index)}
-                aria-label={`Remove condition: ${condition}`}
-                className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
-              >
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
+import { TokenEditor } from "../components/TokenEditor";
 
 // ─── Main row component ──────────────────────────────────────────────────────
 
 /**
  * A collapsible row in the Action panel's Tracked Tokens list.
  *
- * Manages its own local TokenRecord state and writes changes directly to the
- * OBR item by ID (not via selection), so the GM can edit any token without
- * needing to select it first.
- *
- * All record mutations are delegated to pure helpers in tokenRecordMutations.ts
- * so the logic stays consistent with TokenMenu and is tested independently.
+ * The row header contains inline name editing, a center-on-token button, and
+ * an unpin button. The expanded body delegates to TokenEditor for all shared
+ * character editing UI.
  */
 export function TrackedTokenRow({
   item,
@@ -212,12 +121,7 @@ export function TrackedTokenRow({
 
   const cancelEditName = () => setIsEditingName(false);
 
-  // ── Derived injury helpers ─────────────────────────────────────────────────
-
-  const isSurvivor = data.characterType === "survivor";
-  const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Viewport helper ───────────────────────────────────────────────────────
 
   /**
    * Animate the viewport to center on this token at the current zoom level.
@@ -242,6 +146,8 @@ export function TrackedTokenRow({
       scale,
     });
   };
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="rounded-lg border border-white/10 bg-black/5 dark:bg-white/5">
@@ -355,140 +261,28 @@ export function TrackedTokenRow({
         )}
       </div>
 
-      {/* ── Expanded body: inline token editor ─────────────────────── */}
+      {/* ── Expanded body: shared TokenEditor ───────────────────────── */}
       {isOpen && (
         <div className="flex flex-col gap-3 border-t border-white/10 px-2 pb-3 pt-2">
-
-          {/* Character type toggle */}
-          <div className="flex items-center gap-1 rounded-lg bg-black/10 p-0.5 dark:bg-white/10 self-start">
-            {(["survivor", "other"] as const).map((type: CharacterType) => (
-              <button
-                key={type}
-                onClick={() => applyMutation((r) => applyCharacterType(r, type))}
-                className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
-                  data.characterType === type
-                    ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                    : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-                }`}
-              >
-                {type === "survivor" ? "Survivor" : "Other"}
-              </button>
-            ))}
-          </div>
-
-          {/* ── Strain ────────────────────────────────────────────────── */}
-          <section>
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-                Strain
-              </h3>
-              <div className="flex items-center gap-1.5 text-xs text-text-secondary dark:text-text-secondary-dark">
-                <span>Max: {data.strainMax}</span>
-                <Stepper
-                  onDecrement={() => applyMutation((r) => applyStrainMax(r, data.strainMax - 1))}
-                  onIncrement={() => applyMutation((r) => applyStrainMax(r, data.strainMax + 1))}
-                  disableDecrement={data.strainMax <= STRAIN_MIN}
-                  disableIncrement={data.strainMax >= STRAIN_MAX}
-                />
-              </div>
-            </div>
-            <StrainRow
-              strainMax={data.strainMax}
-              strainCurrent={data.strainCurrent}
-              onChange={(current) => applyMutation((r) => applyStrainCurrent(r, current))}
-            />
-            <div className="mt-0.5 text-2xs text-text-disabled dark:text-text-disabled-dark">
-              {data.strainCurrent} / {data.strainMax} taken
-            </div>
-          </section>
-
-          {/* ── Injuries ──────────────────────────────────────────────── */}
-          <section>
-            <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
-                Injuries
-              </h3>
-              {/* Injury slot steppers — only shown for "Other" type */}
-              {!isSurvivor && (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">S</span>
-                    <Stepper
-                      onDecrement={() => applyMutation((r) => applyAdjustSeriousTier(r, -1))}
-                      onIncrement={() => applyMutation((r) => applyAdjustSeriousTier(r, 1))}
-                      disableDecrement={seriousLevel <= 0}
-                      disableIncrement={seriousLevel >= 2}
-                    />
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">C</span>
-                    <Stepper
-                      onDecrement={() => applyMutation((r) => applySetHasCritical(r, false))}
-                      onIncrement={() => applyMutation((r) => applySetHasCritical(r, true))}
-                      disableDecrement={!data.hasCritical}
-                      disableIncrement={data.hasCritical}
-                    />
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-2xs text-text-disabled dark:text-text-disabled-dark">L</span>
-                    <Stepper
-                      onDecrement={() => applyMutation((r) => applySetHasLethal(r, false))}
-                      onIncrement={() => applyMutation((r) => applySetHasLethal(r, true))}
-                      disableDecrement={!data.hasLethal}
-                      disableIncrement={data.hasLethal}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col gap-2">
-              {data.hasSerious && (
-                <>
-                  <InjurySlotCard
-                    slot={data.seriousInjuries[0]}
-                    severity="serious"
-                    label={isSurvivor || data.seriousCount === 2 ? "Serious #1" : "Serious"}
-                    onUpdate={(patch) => applyMutation((r) => applyUpdateSeriousInjury(r, 0, patch))}
-                  />
-                  {(isSurvivor || data.seriousCount === 2) && (
-                    <InjurySlotCard
-                      slot={data.seriousInjuries[1]}
-                      severity="serious"
-                      label="Serious #2"
-                      onUpdate={(patch) => applyMutation((r) => applyUpdateSeriousInjury(r, 1, patch))}
-                    />
-                  )}
-                </>
-              )}
-              {data.hasCritical && (
-                <InjurySlotCard
-                  slot={data.criticalInjury}
-                  severity="critical"
-                  label="Critical"
-                  onUpdate={(patch) => applyMutation((r) => applyUpdateCriticalInjury(r, patch))}
-                />
-              )}
-              {data.hasLethal && (
-                <InjurySlotCard
-                  slot={data.lethalInjury}
-                  severity="lethal"
-                  label="Lethal"
-                  onUpdate={(patch) => applyMutation((r) => applyUpdateLethalInjury(r, patch))}
-                />
-              )}
-              {!data.hasSerious && !data.hasCritical && !data.hasLethal && (
-                <p className="text-xs text-text-disabled dark:text-text-disabled-dark">
-                  No injuries.
-                </p>
-              )}
-            </div>
-          </section>
-
-          {/* ── Conditions ────────────────────────────────────────────── */}
-          <ConditionsSection
-            conditions={data.conditions}
-            onAdd={(text) => applyMutation((r) => applyAddCondition(r, text))}
-            onRemove={(index) => applyMutation((r) => applyRemoveCondition(r, index))}
+          {/*
+           * No topRowExtra here — TrackedTokenRow has no "Open Editor" button.
+           * Name editing is handled in the header row above, not as a section.
+           * No TokenDisplaySection — display overrides are context-menu only.
+           */}
+          <TokenEditor
+            data={data}
+            headingLevel="h3"
+            onSetCharacterType={(type) => applyMutation((r) => applyCharacterType(r, type))}
+            onSetStrainCurrent={(current) => applyMutation((r) => applyStrainCurrent(r, current))}
+            onSetStrainMax={(max) => applyMutation((r) => applyStrainMax(r, max))}
+            onUpdateSeriousInjury={(index, patch) => applyMutation((r) => applyUpdateSeriousInjury(r, index, patch))}
+            onUpdateCriticalInjury={(patch) => applyMutation((r) => applyUpdateCriticalInjury(r, patch))}
+            onUpdateLethalInjury={(patch) => applyMutation((r) => applyUpdateLethalInjury(r, patch))}
+            onAdjustSeriousTier={(delta) => applyMutation((r) => applyAdjustSeriousTier(r, delta))}
+            onSetHasCritical={(val) => applyMutation((r) => applySetHasCritical(r, val))}
+            onSetHasLethal={(val) => applyMutation((r) => applySetHasLethal(r, val))}
+            onAddCondition={(text) => applyMutation((r) => applyAddCondition(r, text))}
+            onRemoveCondition={(index) => applyMutation((r) => applyRemoveCondition(r, index))}
           />
         </div>
       )}

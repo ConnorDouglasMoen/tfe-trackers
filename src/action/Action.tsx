@@ -181,10 +181,13 @@ export default function Action(): React.JSX.Element {
 
             <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
 
-            {/* ── On-Map Display settings ────────────────────────────── */}
+            {/* ── Scene Display settings ────────────────────────────── */}
             <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-              On-Map Display Settings
+              Scene Display Settings
             </h2>
+            <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
+              Right-click a token and open the TFE Trackers menu to override the scene-level display settings for that token.
+            </p>
             <div className="flex flex-col gap-2">
               <div className={rowClass}>
                 <span>Show Strain</span>

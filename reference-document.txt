@@ -276,6 +276,11 @@ src/
     StrainRow.tsx
     InjurySlotCard.tsx  — complications as string[]; Enter to add, X to delete
                           Treated auto-resets when description+complications cleared
+    TokenEditor.tsx     — shared editor fragment: Survivor/Other toggle,
+                          strain, injuries, conditions. Props-based; no store
+                          coupling. Also exports: Stepper, ConditionsEditor.
+                          headingLevel prop: "h2" (TokenMenu) / "h3" (TrackedTokenRow).
+                          topRowExtra slot: TokenMenu passes GM "Open Editor" button.
 
   displaySettings/            — UNUSED, delete this directory
 
@@ -392,11 +397,23 @@ Quality / functionality backlog:
   TrackedTokenRow's applyMutation callback now takes (r: TokenRecord) => TokenRecord
   instead of separate applyDataPatch/applyRecordPatch functions.
   Tests in src/test/tokenRecordMutations.test.ts.
-- 3. Extract a shared TokenEditor component used by both TokenMenu.tsx and
-  TrackedTokenRow.tsx. Keep wrappers responsible for persistence target
-  (selection vs item ID), but share the Survivor/Other toggle, strain editor,
-  injury editor, conditions editor, and display-name editor to prevent behavior
-  drift between the context menu and GM Action panel.
+- 3. [DONE] Extract a shared TokenEditor component used by both TokenMenu.tsx
+and TrackedTokenRow.tsx. TokenEditor (src/components/TokenEditor.tsx) renders
+the character type toggle, strain section, injuries section, and conditions
+section via props/callbacks — agnostic about persistence target.
+Intentional differences preserved:
+    - headingLevel prop: "h2" in TokenMenu, "h3" in TrackedTokenRow.
+    - topRowExtra render slot: TokenMenu passes the GM "Open Editor" popover
+      button; TrackedTokenRow passes nothing.
+    - Name section: stays in TokenMenu as a top-level <section>; TrackedTokenRow
+      keeps its inline header input (unchanged).
+    - TokenDisplaySection: stays in TokenMenu only.
+    - No-injuries empty message: context-specific copy per isSurvivor.
+  Stepper and ConditionsEditor also extracted into TokenEditor.tsx as named
+  exports (Stepper, ConditionsEditor) — the private per-file duplicates removed.
+  TokenMenu's adjustSerious adapter (setHasSerious + setSeriousCount) is a
+  local helper in TokenMenu that satisfies TokenEditor's onAdjustSeriousTier
+  callback; TrackedTokenRow calls applyAdjustSeriousTier directly.
 - 4. Add write failure handling for OBR metadata updates. Current writes are
   mostly optimistic fire-and-forget; add user-visible failure state or retry
   behavior for TokenMenu, TrackedTokenRow, scene display settings, and
