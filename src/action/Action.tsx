@@ -30,13 +30,11 @@ export default function Action(): React.JSX.Element {
   }, []);
 
   // Prune tracked IDs that no longer exist in the scene. Runs whenever the
-  // scene item list changes (tokens added, removed, or updated). Scoped to GM
-  // only — players manage their own independent tracked lists and the GM has
-  // no authority over them.
+  // scene item list changes (tokens added, removed, or updated). Applies to
+  // all roles — stale IDs accumulate for players just as they do for GMs.
   useEffect(() => {
-    if (role !== "GM") return;
     pruneStaleIds(items.map((item) => item.id));
-  }, [items, role]);
+  }, [items]);
 
   // Resolve live Item objects for pinned token IDs.
   // Filters out IDs whose items have been deleted from the scene.

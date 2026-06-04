@@ -228,9 +228,10 @@ DECISIONS MADE
 - Stale tracked token IDs are pruned automatically, not manually:
   useTrackedTokensStore.pruneStaleIds(liveItemIds) removes IDs absent from
   the live scene item list; called from Action.tsx in a useEffect on items
-  change, scoped to GM role only. Players manage their own independent lists.
-  The prune is a no-op when nothing changes (no unnecessary localStorage writes
-  or re-renders). Also covered by tests in useTrackedTokensStore.test.ts.
+  change, for all roles (GMs and players both accumulate stale IDs when tokens
+  are deleted). The prune is a no-op when nothing changes (no unnecessary
+  localStorage writes or re-renders). Also covered by tests in
+  useTrackedTokensStore.test.ts.
 
 --------------------------------------------------------------------
 FILE MAP
