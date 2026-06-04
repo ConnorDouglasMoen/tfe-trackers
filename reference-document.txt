@@ -451,10 +451,16 @@ Intentional differences preserved:
   precedence (lethal > critical > serious > condition), scale clamping,
   all builder output shapes/colors/IDs, and display-layer gating for
   injuryDisplay/showConditions.
-- 9. Add performance guardrails for on-map redraws. Consider debouncing rapid
-  item metadata changes, avoiding full scene redraws when only unrelated scene
-  metadata changes, and documenting/limiting attachment counts for heavily
-  populated scenes.
+- 9. [DONE] Add performance guardrails for on-map redraws. Three changes made
+  to onMapDisplay.ts:
+  (a) Debounce item-change redraws: items.onChange callback deferred 150ms;
+      rapid consecutive fires (e.g. token drag) collapse into one redraw.
+  (b) Skip unrelated item changes: hasTfeRelevantItems() checks the changed
+      set for TFE tokens (have TOKEN_RECORD_METADATA_ID in metadata) or TFE
+      attachment IDs (contain "-tfe-"); returns early if none found.
+  (c) Skip no-op scene metadata changes: onMetadataChange serializes the
+      resolved DisplaySettings and bails if the JSON matches the cached
+      snapshot — prevents redraws when other plugins write scene metadata.
 - 10. Review accessibility for compact controls. Add aria-label/title coverage
   for segmented controls, size controls, injury slot steppers, strain boxes, and
   icon buttons; ensure keyboard operation works in both the context menu and

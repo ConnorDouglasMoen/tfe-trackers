@@ -16,6 +16,16 @@ let sceneListenersSet = false;
 let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
 let sceneDpi = 150;
 
+// Serialized snapshot of the last-known display settings used to detect
+// no-op scene metadata changes (other plugins writing unrelated metadata
+// should not trigger a full TFE redraw).
+let displaySettingsJson = JSON.stringify(DEFAULT_DISPLAY_SETTINGS);
+
+// Debounce handle for item-change redraws. Rapid consecutive onChange events
+// (e.g. dragging a token) collapse into a single redraw fired after the delay.
+let itemChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const ITEM_CHANGE_DEBOUNCE_MS = 150;
+
 // Fonts (e.g. Roboto) may not be loaded when OBR first fires onReadyChange,
 // causing Unicode symbols to fall back to a system font and render incorrectly.
 // A delayed second refresh (matching the owl-trackers reference approach)
@@ -36,6 +46,23 @@ function readDisplaySettings(meta: Metadata): DisplaySettings {
     return { ...DEFAULT_DISPLAY_SETTINGS, ...(raw as Partial<DisplaySettings>) };
   }
   return { ...DEFAULT_DISPLAY_SETTINGS };
+}
+
+/**
+ * Returns true if `items` contains at least one TFE-relevant item: either a
+ * CHARACTER/MOUNT image token with TFE metadata, or a TFE local attachment
+ * (identified by the "-tfe-" substring in its ID). This guards the
+ * items.onChange handler from triggering redraws when unrelated tokens
+ * (plain images, drawings, rulers, etc.) are the only things that changed.
+ */
+function hasTfeRelevantItems(items: Item[]): boolean {
+  return items.some(
+    (item) =>
+      item.id.includes("-tfe-") ||
+      ((item.layer === "CHARACTER" || item.layer === "MOUNT") &&
+        isImage(item) &&
+        getPluginId(TOKEN_RECORD_METADATA_ID) in item.metadata),
+  );
 }
 
 export function initOnMapDisplay() {
@@ -60,8 +87,14 @@ export function initOnMapDisplay() {
   });
 
   // Respond to scene-level display setting changes (GM Action panel updates).
+  // Early-exit when TFE's own display settings haven't actually changed — this
+  // prevents full redraws when other plugins write unrelated scene metadata.
   OBR.scene.onMetadataChange((meta) => {
-    displaySettings = readDisplaySettings(meta);
+    const next = readDisplaySettings(meta);
+    const nextJson = JSON.stringify(next);
+    if (nextJson === displaySettingsJson) return;
+    displaySettings = next;
+    displaySettingsJson = nextJson;
     void refreshAll();
   });
 
@@ -110,21 +143,33 @@ function startListeners() {
   if (sceneListenersSet) return;
   sceneListenersSet = true;
 
-  const unsubItems = OBR.scene.items.onChange(async (allItems) => {
-    const images: Image[] = allItems.filter(
-      (item): item is Image =>
-        (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
-    );
-    const changed = getChangedItems(images);
-    itemsLast = images;
-    if (changed.length === 0) return;
+  const unsubItems = OBR.scene.items.onChange((allItems) => {
+    // Skip entirely if no TFE-relevant items are in the changed set — this
+    // avoids redraws when only unrelated scene items (props, drawings, etc.)
+    // were modified.
+    if (!hasTfeRelevantItems(allItems)) return;
 
-    const addItems: Item[] = [];
-    const deleteIds: string[] = [];
-    for (const item of changed) updateItem(item, addItems, deleteIds);
+    // Debounce: cancel any pending redraw and schedule a fresh one. This
+    // collapses rapid successive fires (e.g. token drag) into a single redraw.
+    if (itemChangeDebounceTimer !== null) clearTimeout(itemChangeDebounceTimer);
+    itemChangeDebounceTimer = setTimeout(async () => {
+      itemChangeDebounceTimer = null;
 
-    if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
-    await batchAdd(addItems);
+      const images: Image[] = allItems.filter(
+        (item): item is Image =>
+          (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
+      );
+      const changed = getChangedItems(images);
+      itemsLast = images;
+      if (changed.length === 0) return;
+
+      const addItems: Item[] = [];
+      const deleteIds: string[] = [];
+      for (const item of changed) updateItem(item, addItems, deleteIds);
+
+      if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
+      await batchAdd(addItems);
+    }, ITEM_CHANGE_DEBOUNCE_MS);
   });
 
   OBR.scene.onReadyChange((isReady) => {
