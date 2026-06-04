@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Item } from "@owlbear-rodeo/sdk";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useSceneDisplayStore } from "../useSceneDisplayStore";
@@ -23,6 +23,12 @@ export default function Action(): React.JSX.Element {
   const initSceneDisplay = useSceneDisplayStore((state) => state.init);
   const trackedTokenIds = useTrackedTokensStore((state) => state.trackedTokenIds);
   const pruneStaleIds = useTrackedTokensStore((state) => state.pruneStaleIds);
+  const trackToken = useTrackedTokensStore((state) => state.trackToken);
+  const untrackToken = useTrackedTokensStore((state) => state.untrackToken);
+  const reorderTokens = useTrackedTokensStore((state) => state.reorderTokens);
+
+  // ID of the token row currently being dragged, if any.
+  const draggedId = useRef<string | null>(null);
 
   // Wire up scene display metadata listener once.
   useEffect(() => {
@@ -30,9 +36,11 @@ export default function Action(): React.JSX.Element {
   }, []);
 
   // Prune tracked IDs that no longer exist in the scene. Runs whenever the
-  // scene item list changes (tokens added, removed, or updated). Applies to
-  // all roles — stale IDs accumulate for players just as they do for GMs.
+  // scene item list changes (tokens added, removed, or updated). Guards against
+  // the initial render where items is still [] before the scene fetch resolves —
+  // without this guard, pruneStaleIds([]) would wipe all pinned tokens on load.
   useEffect(() => {
+    if (items.length === 0) return;
     pruneStaleIds(items.map((item) => item.id));
   }, [items]);
 
@@ -72,6 +80,10 @@ export default function Action(): React.JSX.Element {
     }
     return result;
   })();
+
+  // Index of the row currently being dragged over — used to show a drop
+  // indicator without mutating store state on every dragover event.
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Resize the action popover dynamically to fit content.
   const divRef = useRef<HTMLDivElement>(null);
@@ -154,15 +166,133 @@ export default function Action(): React.JSX.Element {
           )}
         </div>
 
+        {/* GM bulk pin/unpin controls */}
+        {role === "GM" && (
+          <div className="flex gap-2">
+            {/* Pin every untracked CHARACTER/MOUNT IMAGE token in the scene */}
+            <button
+              onClick={() => {
+                const pinnedSet = new Set(trackedTokenIds);
+                items
+                  .filter(
+                    (item) =>
+                      (item.layer === "CHARACTER" || item.layer === "MOUNT") &&
+                      item.type === "IMAGE" &&
+                      !pinnedSet.has(item.id),
+                  )
+                  .forEach((item) => trackToken(item.id));
+              }}
+              className="flex-1 rounded-md border border-white/10 bg-black/10 px-2 py-1 text-xs font-medium text-text-secondary hover:bg-black/20 hover:text-text-primary dark:bg-white/5 dark:text-text-secondary-dark dark:hover:bg-white/10 dark:hover:text-text-primary-dark"
+            >
+              Pin All
+            </button>
+            {/* Unpin every currently tracked token */}
+            <button
+              onClick={() => {
+                [...trackedTokenIds].forEach((id) => untrackToken(id));
+              }}
+              disabled={trackedTokenIds.length === 0}
+              className="flex-1 rounded-md border border-white/10 bg-black/10 px-2 py-1 text-xs font-medium text-text-secondary hover:bg-black/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/5 dark:text-text-secondary-dark dark:hover:bg-white/10 dark:hover:text-text-primary-dark"
+            >
+              Unpin All
+            </button>
+          </div>
+        )}
+
         {trackedItems.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {trackedItems.map((item) => (
-              <TrackedTokenRow
+          // Outer wrapper catches dragover/drop that fall between rows or below
+          // the last row, so the insertion line and drop always resolve cleanly.
+          <div
+            className="flex flex-col"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const fromId = draggedId.current;
+              draggedId.current = null;
+              setDragOverIndex(null);
+              if (fromId === null || dragOverIndex === null) return;
+              const next = trackedTokenIds.filter((id) => id !== fromId);
+              // dragOverIndex is the insertion position in the pre-removal list;
+              // clamp to valid range after removal.
+              const insertAt = Math.min(dragOverIndex, next.length);
+              next.splice(insertAt, 0, fromId);
+              reorderTokens(next);
+            }}
+            onDragLeave={(e) => {
+              // Only clear when the pointer leaves the entire list container,
+              // not when it moves between child elements.
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                setDragOverIndex(null);
+              }
+            }}
+          >
+            {trackedItems.map((item, index) => (
+              <div
                 key={item.id}
-                item={item}
-                displayName={displayNames.get(item.id) ?? item.name}
-              />
+                draggable
+                onDragStart={(e) => {
+                  draggedId.current = item.id;
+                  // Dim the row while it is being dragged.
+                  (e.currentTarget as HTMLDivElement).style.opacity = "0.4";
+                }}
+                onDragEnd={(e) => {
+                  draggedId.current = null;
+                  setDragOverIndex(null);
+                  (e.currentTarget as HTMLDivElement).style.opacity = "";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation(); // don't bubble to outer container handler
+                  // Determine insertion index from pointer position relative to
+                  // the midpoint of this row: top half → insert before, bottom
+                  // half → insert after.
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const insertBefore = e.clientY < rect.top + rect.height / 2;
+                  let insertion = insertBefore ? index : index + 1;
+                  // When dragging downward the dragged row still occupies a slot
+                  // above the target in the live list, shifting every row below
+                  // it up by one visual position. Subtract 1 to compensate so
+                  // the indicator lands where the user expects.
+                  const draggedIndex = draggedId.current
+                    ? trackedTokenIds.indexOf(draggedId.current)
+                    : -1;
+                  if (draggedIndex !== -1 && draggedIndex < index) {
+                    insertion -= 1;
+                  }
+                  setDragOverIndex(insertion);
+                }}
+                className="flex flex-col mb-2"
+              >
+                {/* Insertion line above this row (insert-before indicator) */}
+                <div
+                  className={`mx-1 h-0.5 rounded-full transition-colors duration-75 ${(() => {
+                    if (dragOverIndex === null || draggedId.current === item.id) return "bg-transparent";
+                    // Translate dragOverIndex (post-removal space) back to
+                    // pre-removal space for rendering against the live row index.
+                    const draggedIndex = draggedId.current
+                      ? trackedTokenIds.indexOf(draggedId.current)
+                      : -1;
+                    const renderIndex =
+                      draggedIndex !== -1 && draggedIndex < index
+                        ? dragOverIndex + 1
+                        : dragOverIndex;
+                    return renderIndex === index ? "bg-white/50 mb-1" : "bg-transparent";
+                  })()}`}
+                />
+                <TrackedTokenRow
+                  item={item}
+                  displayName={displayNames.get(item.id) ?? item.name}
+                />
+              </div>
             ))}
+            {/* Insertion line after the last row (append-to-end indicator) */}
+            <div
+              className={`mx-1 h-0.5 rounded-full transition-colors duration-75 ${
+                dragOverIndex === trackedItems.length && draggedId.current !== null
+                  ? "bg-white/50"
+                  : "bg-transparent"
+              }`}
+            />
           </div>
         ) : (
           <p className="text-xs text-text-secondary dark:text-text-secondary-dark">

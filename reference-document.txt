@@ -434,13 +434,17 @@ Intentional differences preserved:
   Action.tsx in a useEffect on items change, GM role only. Silent and automatic
   — no user-visible confirmation. No-op when nothing changes. Tests added to
   useTrackedTokensStore.test.ts.
-- 6. Make context-menu pin state explicit. Replace the single
+- 6. [CANNOT DO] Make context-menu pin state explicit. Replace the single
   "Pin to Action Panel" toggle label with distinct Pin/Unpin menu entries or
-  metadata-aware labels once OBR filtering supports it cleanly, so GMs can tell
-  the current state before clicking.
-- 7. Add a bulk GM utility section for tracked tokens. Candidate actions:
-  unpin all missing tokens, unpin all tracked tokens, clear TFE data from all
-  tracked tokens after confirmation, and refresh/rebuild on-map attachments.
+  metadata-aware labels.
+- 7. [DONE] Add bulk GM pin/unpin controls to the Tracked Tokens section.
+  "Pin All" tracks every untracked CHARACTER/MOUNT IMAGE token in the scene.
+  "Unpin All" removes all currently tracked tokens (disabled when list is empty).
+  Both buttons are GM-only, rendered between the section header and the token list.
+  Drag-and-drop reordering also added (all roles): draggable wrapper divs in
+  Action.tsx with HTML5 drag API; reorderTokens() action added to
+  useTrackedTokensStore persists new order to localStorage; drag handle icon
+  rendered in TrackedTokenRow header (six-dot grip, left of chevron).
 - 8. [DONE] Automated tests for on-map helper data behavior. Covers injury slot
   resolution (survivor vs other seriousCount), empty-vs-filled filtering,
   complication/condition deduplication (case-insensitive), severity color

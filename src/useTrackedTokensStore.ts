@@ -63,9 +63,23 @@ interface TrackedTokensState {
    * stale IDs from accumulating in localStorage when tokens are deleted from
    * the scene. Silent and automatic — no user-visible confirmation required.
    *
+   * No-op when liveItemIds is empty — an empty list indicates the scene items
+   * haven't loaded yet, not that all tokens were deleted.
+   *
    * @param liveItemIds - The full set of item IDs currently in the scene.
    */
   pruneStaleIds: (liveItemIds: string[]) => void;
+
+  /**
+   * Replace the tracked token order with a new ordering of the same IDs.
+   *
+   * The provided array must contain exactly the same IDs as the current list
+   * (same set, different order). If the arrays don't match, the call is a
+   * no-op to guard against stale drag state.
+   *
+   * @param ids - The full tracked token ID list in the desired order.
+   */
+  reorderTokens: (ids: string[]) => void;
 }
 
 export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => ({
@@ -115,7 +129,22 @@ export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => 
 
   isTracked: (id: string) => get().trackedTokenIds.includes(id),
 
+  reorderTokens: (ids: string[]) => {
+    const current = get().trackedTokenIds;
+    // Guard: new list must be the same set of IDs (no additions or removals).
+    if (
+      ids.length !== current.length ||
+      !ids.every((id) => current.includes(id))
+    ) return;
+    saveToStorage(ids);
+    set({ trackedTokenIds: ids });
+  },
+
   pruneStaleIds: (liveItemIds: string[]) => {
+    // Guard: an empty live list means the scene items haven't loaded yet
+    // (not that all tokens were deleted). Skip to avoid wiping pinned tokens
+    // on initial render before the scene fetch resolves.
+    if (liveItemIds.length === 0) return;
     const current = get().trackedTokenIds;
     const liveSet = new Set(liveItemIds);
     const next = current.filter((id) => liveSet.has(id));

@@ -9,7 +9,8 @@
  *  4. StorageEvent from another frame triggers a re-read.
  *  5. Duplicate IDs are not added.
  *  6. isTracked reflects live state.
- *  7. pruneStaleIds removes IDs absent from the live scene item list.
+ *  7. pruneStaleIds removes IDs absent from the live scene item list; no-op on empty list.
+ *  8. reorderTokens persists a new ordering and rejects invalid inputs.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import OBR from "@owlbear-rodeo/sdk";
@@ -338,7 +339,6 @@ describe("resilience to malformed localStorage data", () => {
 });
 
 // ─── pruneStaleIds ────────────────────────────────────────────────────────────
-
 describe("pruneStaleIds", () => {
   it("removes IDs not present in the live item list", () => {
     seedStorage(["token-1", "token-2", "token-deleted"]);
@@ -385,19 +385,6 @@ describe("pruneStaleIds", () => {
     cleanup();
   });
 
-  it("removes all IDs when the live list is empty", () => {
-    seedStorage(["token-1", "token-2"]);
-    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
-    const cleanup = init();
-
-    pruneStaleIds([]);
-
-    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([]);
-    expect(readStorage()).toEqual([]);
-
-    cleanup();
-  });
-
   it("is a no-op when the tracked list is already empty", () => {
     const { init, pruneStaleIds } = useTrackedTokensStore.getState();
     const cleanup = init();
@@ -410,6 +397,25 @@ describe("pruneStaleIds", () => {
     cleanup();
   });
 
+  it("does not wipe tracked tokens when called with an empty live list", () => {
+    // Regression: on Action panel mount, items starts as [] before the scene
+    // fetch resolves. pruneStaleIds([]) must not clear pinned tokens.
+    seedStorage(["token-1", "token-2"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    pruneStaleIds([]);
+
+    // Tracked tokens must survive an empty-list prune call.
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([
+      "token-1",
+      "token-2",
+    ]);
+    expect(readStorage()).toEqual(["token-1", "token-2"]);
+
+    cleanup();
+  });
+
   it("removes multiple stale IDs in one pass", () => {
     seedStorage(["token-a", "token-b", "token-c", "token-d"]);
     const { init, pruneStaleIds } = useTrackedTokensStore.getState();
@@ -418,6 +424,88 @@ describe("pruneStaleIds", () => {
     pruneStaleIds(["token-b"]);
 
     expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual(["token-b"]);
+
+    cleanup();
+  });
+});
+
+// ─── reorderTokens ───────────────────────────────────────────────────────────
+
+describe("reorderTokens", () => {
+  it("reorders the list and persists to localStorage", () => {
+    seedStorage(["token-1", "token-2", "token-3"]);
+    const { init, reorderTokens } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    reorderTokens(["token-3", "token-1", "token-2"]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([
+      "token-3",
+      "token-1",
+      "token-2",
+    ]);
+    expect(readStorage()).toEqual(["token-3", "token-1", "token-2"]);
+
+    cleanup();
+  });
+
+  it("is a no-op when the incoming array has a different length", () => {
+    seedStorage(["token-1", "token-2", "token-3"]);
+    const { init, reorderTokens } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    reorderTokens(["token-1", "token-2"]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([
+      "token-1",
+      "token-2",
+      "token-3",
+    ]);
+    expect(readStorage()).toEqual(["token-1", "token-2", "token-3"]);
+
+    cleanup();
+  });
+
+  it("is a no-op when the incoming array contains an unrecognised ID", () => {
+    seedStorage(["token-1", "token-2", "token-3"]);
+    const { init, reorderTokens } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    reorderTokens(["token-1", "token-2", "token-UNKNOWN"]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([
+      "token-1",
+      "token-2",
+      "token-3",
+    ]);
+
+    cleanup();
+  });
+
+  it("moving an item to the front updates both store and storage", () => {
+    seedStorage(["token-a", "token-b", "token-c"]);
+    const { init, reorderTokens } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    reorderTokens(["token-c", "token-a", "token-b"]);
+
+    const ids = useTrackedTokensStore.getState().trackedTokenIds;
+    expect(ids[0]).toBe("token-c");
+    expect(readStorage()[0]).toBe("token-c");
+
+    cleanup();
+  });
+
+  it("moving an item to the end updates both store and storage", () => {
+    seedStorage(["token-a", "token-b", "token-c"]);
+    const { init, reorderTokens } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    reorderTokens(["token-b", "token-c", "token-a"]);
+
+    const ids = useTrackedTokensStore.getState().trackedTokenIds;
+    expect(ids[ids.length - 1]).toBe("token-a");
+    expect(readStorage().at(-1)).toBe("token-a");
 
     cleanup();
   });

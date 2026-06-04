@@ -196,6 +196,21 @@ export function TrackedTokenRow({
         ) : (
           /* ── Normal mode ── */
           <>
+            {/* Drag handle — purely visual affordance; draggable is on the wrapper div in Action.tsx */}
+            <span
+              aria-hidden="true"
+              className="shrink-0 cursor-grab text-text-disabled dark:text-text-disabled-dark"
+            >
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+                <circle cx="5" cy="4" r="1.2" />
+                <circle cx="5" cy="8" r="1.2" />
+                <circle cx="5" cy="12" r="1.2" />
+                <circle cx="11" cy="4" r="1.2" />
+                <circle cx="11" cy="8" r="1.2" />
+                <circle cx="11" cy="12" r="1.2" />
+              </svg>
+            </span>
+
             {/* Chevron + name (collapse toggle) */}
             <button
               onClick={() => setIsOpen((v) => !v)}
