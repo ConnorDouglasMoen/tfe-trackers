@@ -55,6 +55,17 @@ interface TrackedTokensState {
 
   /** Returns true if the given token ID is currently tracked. */
   isTracked: (id: string) => boolean;
+
+  /**
+   * Remove any tracked IDs that are no longer present in the live scene.
+   *
+   * Called by the Action panel whenever the items list changes. This prevents
+   * stale IDs from accumulating in localStorage when tokens are deleted from
+   * the scene. Silent and automatic — no user-visible confirmation required.
+   *
+   * @param liveItemIds - The full set of item IDs currently in the scene.
+   */
+  pruneStaleIds: (liveItemIds: string[]) => void;
 }
 
 export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => ({
@@ -103,4 +114,15 @@ export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => 
   },
 
   isTracked: (id: string) => get().trackedTokenIds.includes(id),
+
+  pruneStaleIds: (liveItemIds: string[]) => {
+    const current = get().trackedTokenIds;
+    const liveSet = new Set(liveItemIds);
+    const next = current.filter((id) => liveSet.has(id));
+    // Skip the write if nothing changed to avoid unnecessary re-renders and
+    // localStorage churn.
+    if (next.length === current.length) return;
+    saveToStorage(next);
+    set({ trackedTokenIds: next });
+  },
 }));

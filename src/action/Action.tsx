@@ -22,11 +22,21 @@ export default function Action(): React.JSX.Element {
   const setSettings = useSceneDisplayStore((state) => state.setSettings);
   const initSceneDisplay = useSceneDisplayStore((state) => state.init);
   const trackedTokenIds = useTrackedTokensStore((state) => state.trackedTokenIds);
+  const pruneStaleIds = useTrackedTokensStore((state) => state.pruneStaleIds);
 
   // Wire up scene display metadata listener once.
   useEffect(() => {
     initSceneDisplay();
   }, []);
+
+  // Prune tracked IDs that no longer exist in the scene. Runs whenever the
+  // scene item list changes (tokens added, removed, or updated). Scoped to GM
+  // only — players manage their own independent tracked lists and the GM has
+  // no authority over them.
+  useEffect(() => {
+    if (role !== "GM") return;
+    pruneStaleIds(items.map((item) => item.id));
+  }, [items, role]);
 
   // Resolve live Item objects for pinned token IDs.
   // Filters out IDs whose items have been deleted from the scene.

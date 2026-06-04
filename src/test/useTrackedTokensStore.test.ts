@@ -9,6 +9,7 @@
  *  4. StorageEvent from another frame triggers a re-read.
  *  5. Duplicate IDs are not added.
  *  6. isTracked reflects live state.
+ *  7. pruneStaleIds removes IDs absent from the live scene item list.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import OBR from "@owlbear-rodeo/sdk";
@@ -331,6 +332,92 @@ describe("resilience to malformed localStorage data", () => {
     const cleanup = init();
 
     expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([]);
+
+    cleanup();
+  });
+});
+
+// ─── pruneStaleIds ────────────────────────────────────────────────────────────
+
+describe("pruneStaleIds", () => {
+  it("removes IDs not present in the live item list", () => {
+    seedStorage(["token-1", "token-2", "token-deleted"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    pruneStaleIds(["token-1", "token-2"]);
+
+    const ids = useTrackedTokensStore.getState().trackedTokenIds;
+    expect(ids).toContain("token-1");
+    expect(ids).toContain("token-2");
+    expect(ids).not.toContain("token-deleted");
+
+    cleanup();
+  });
+
+  it("persists the pruned list to localStorage", () => {
+    seedStorage(["token-1", "token-stale"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    pruneStaleIds(["token-1"]);
+
+    expect(readStorage()).toEqual(["token-1"]);
+    expect(readStorage()).not.toContain("token-stale");
+
+    cleanup();
+  });
+
+  it("is a no-op when all tracked IDs are still live", () => {
+    seedStorage(["token-1", "token-2"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    // Capture state reference before prune to verify no unnecessary re-render.
+    const beforeIds = useTrackedTokensStore.getState().trackedTokenIds;
+    pruneStaleIds(["token-1", "token-2", "token-3"]);
+    const afterIds = useTrackedTokensStore.getState().trackedTokenIds;
+
+    expect(afterIds).toEqual(["token-1", "token-2"]);
+    // Same array reference — no setState call was made.
+    expect(afterIds).toBe(beforeIds);
+
+    cleanup();
+  });
+
+  it("removes all IDs when the live list is empty", () => {
+    seedStorage(["token-1", "token-2"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    pruneStaleIds([]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([]);
+    expect(readStorage()).toEqual([]);
+
+    cleanup();
+  });
+
+  it("is a no-op when the tracked list is already empty", () => {
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    // Should not throw or write to storage.
+    pruneStaleIds(["token-1", "token-2"]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([]);
+
+    cleanup();
+  });
+
+  it("removes multiple stale IDs in one pass", () => {
+    seedStorage(["token-a", "token-b", "token-c", "token-d"]);
+    const { init, pruneStaleIds } = useTrackedTokensStore.getState();
+    const cleanup = init();
+
+    pruneStaleIds(["token-b"]);
+
+    expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual(["token-b"]);
 
     cleanup();
   });

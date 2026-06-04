@@ -224,8 +224,13 @@ DECISIONS MADE
   without needing or affecting the current selection.
 - TrackedTokenRow re-syncs local record from item prop on each items change
   so concurrent edits (player context menu + GM Action panel) stay in sync.
-
 - Bubbles render ABOVE token (getTokenTopLeft), not below.
+- Stale tracked token IDs are pruned automatically, not manually:
+  useTrackedTokensStore.pruneStaleIds(liveItemIds) removes IDs absent from
+  the live scene item list; called from Action.tsx in a useEffect on items
+  change, scoped to GM role only. Players manage their own independent lists.
+  The prune is a no-op when nothing changes (no unnecessary localStorage writes
+  or re-renders). Also covered by tests in useTrackedTokensStore.test.ts.
 
 --------------------------------------------------------------------
 FILE MAP
@@ -241,7 +246,8 @@ src/
                                 init() wires OBR.scene.onMetadataChange
   useTrackedTokensStore.ts    — Zustand store for per-user pinned token IDs;
                                 init() wires OBR.player.onChange listener;
-                                trackToken/untrackToken write to player metadata
+                                trackToken/untrackToken write to localStorage;
+                                pruneStaleIds() removes deleted-token IDs
   useOwlbearStore.ts
   useOwlbearStoreSync.ts
   getPluginId.ts / getTheme.ts / OBRThemeProvider.tsx
@@ -266,7 +272,8 @@ src/
     action.html / main.tsx / App.tsx
     Action.tsx                — GM-only: Tracked Tokens list at top,
                                 then On-Map Display settings (scene-level),
-                                including marker/text sizing controls
+                                including marker/text sizing controls;
+                                calls pruneStaleIds on items change (GM only)
     TrackedTokenRow.tsx       — collapsible per-token editor row;
                                 manages own TokenRecord state;
                                 writes to OBR by item ID (not selection)
@@ -314,7 +321,9 @@ src/
                                      OBR write-through; init() metadata load;
                                      onMetadataChange reactive updates
     useTrackedTokensStore.test.ts  — localStorage persistence; track/untrack;
-                                     StorageEvent sync; malformed data resilience
+                                     StorageEvent sync; malformed data resilience;
+                                     pruneStaleIds: removes stale IDs, persists
+                                     to storage, no-op when nothing changes
 
 public/
   manifest.json               — plugin icon: tales-from-elsewhere-logo.svg
@@ -360,7 +369,7 @@ Manual QA checklist for local Owlbear testing:
   - Toggle scene display settings and marker/text sizing from Action panel.
   - Set token display overrides from token menu and confirm they win over scene settings.
   - Pin token to Action panel; edit it from tracked row without changing selection.
-  - Delete a tracked token and confirm it is hidden from the tracked list.
+  - Delete a tracked token and confirm it is removed from the tracked list.
   - Test as PLAYER where possible; confirm GM-only controls are unavailable.
 
 --------------------------------------------------------------------
@@ -416,11 +425,14 @@ Intentional differences preserved:
 - 4. Add write failure handling for OBR metadata updates. Current writes are
   mostly optimistic fire-and-forget; add user-visible failure state or retry
   behavior for TokenMenu, TrackedTokenRow, scene display settings, and
-  tracked-token pin/unpin writes.
-- 5. Prevent stale tracked-token IDs from accumulating in scene metadata. The
-  Action panel currently filters deleted items out of the UI; add a GM-side
-  cleanup pass or explicit "Clean missing tokens" action that removes deleted
-  IDs from trackedTokenIds.
+  tracked-token pin/unpin writes. [DEPRIORITIZED: OBR SDK handles transient
+  failures internally; real failure modes are already guarded. Revisit if
+  actual failures are observed in playtesting.]
+- 5. [DONE] Prevent stale tracked-token IDs from accumulating in localStorage.
+  pruneStaleIds(liveItemIds) added to useTrackedTokensStore; called from
+  Action.tsx in a useEffect on items change, GM role only. Silent and automatic
+  — no user-visible confirmation. No-op when nothing changes. Tests added to
+  useTrackedTokensStore.test.ts.
 - 6. Make context-menu pin state explicit. Replace the single
   "Pin to Action Panel" toggle label with distinct Pin/Unpin menu entries or
   metadata-aware labels once OBR filtering supports it cleanly, so GMs can tell
