@@ -22,7 +22,7 @@ export function useOwlbearStoreSync() {
     } else {
       setItems([]);
     }
-  }, [sceneReady]);
+  }, [sceneReady, setItems]);
 
   const setRole = useOwlbearStore((state) => state.setRole);
   const setSelection = useOwlbearStore((state) => state.setSelection);

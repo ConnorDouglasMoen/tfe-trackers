@@ -65,7 +65,9 @@ function hasTfeRelevantItems(items: Item[]): boolean {
   );
 }
 
-export function initOnMapDisplay() {
+let extraRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function initOnMapDisplay(): () => void {
   // Wire up the ready-change listener first — before any awaits — so we never
   // miss a ready event due to async yielding. Everything else is triggered from
   // here rather than relying on a post-await isReady() check, which has a
@@ -79,7 +81,8 @@ export function initOnMapDisplay() {
       displaySettings = readDisplaySettings(meta);
       await refreshAll();
       startListeners();
-      setTimeout(() => {
+      extraRefreshTimer = setTimeout(() => {
+        extraRefreshTimer = null;
         if (!extraRefreshDone) void refreshAll();
         extraRefreshDone = true;
       }, EXTRA_REFRESH_DELAY);
@@ -107,12 +110,20 @@ export function initOnMapDisplay() {
       displaySettings = readDisplaySettings(meta);
       await refreshAll();
       startListeners();
-      setTimeout(() => {
+      extraRefreshTimer = setTimeout(() => {
+        extraRefreshTimer = null;
         if (!extraRefreshDone) void refreshAll();
         extraRefreshDone = true;
       }, EXTRA_REFRESH_DELAY);
     }
   })();
+
+  return () => {
+    if (extraRefreshTimer !== null) {
+      clearTimeout(extraRefreshTimer);
+      extraRefreshTimer = null;
+    }
+  };
 }
 
 async function refreshAll() {

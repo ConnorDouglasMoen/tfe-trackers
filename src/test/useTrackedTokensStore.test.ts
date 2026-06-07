@@ -278,27 +278,14 @@ describe("StorageEvent sync (cross-frame writes)", () => {
     );
   });
 
-  it("re-reads localStorage when OBR player onChange event fires", () => {
-    let playerChangeCallback: ((player: any) => void) | undefined;
-    vi.mocked(OBR.player.onChange).mockImplementation((cb) => {
-      playerChangeCallback = cb;
-      return () => {};
-    });
-
+  it("does not register an OBR player onChange listener (removed as redundant)", () => {
+    // The OBR.player.onChange subscription was removed because it fired on
+    // every selection/role/theme change and was redundant with the StorageEvent
+    // listener, which already handles cross-frame localStorage writes.
     const { init } = useTrackedTokensStore.getState();
     const cleanup = init();
 
-    expect(playerChangeCallback).toBeDefined();
-
-    // Directly write to localStorage simulating same-frame write or external update
-    seedStorage(["token-from-player-change"]);
-
-    // Trigger player change callback
-    playerChangeCallback!({} as any);
-
-    expect(useTrackedTokensStore.getState().trackedTokenIds).toContain(
-      "token-from-player-change",
-    );
+    expect(vi.mocked(OBR.player.onChange)).not.toHaveBeenCalled();
 
     cleanup();
   });

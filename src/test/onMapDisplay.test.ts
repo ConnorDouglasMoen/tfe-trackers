@@ -34,11 +34,13 @@ async function initDisplayWithItem(image: Image, sceneSettings = DEFAULT_DISPLAY
   vi.mocked(OBR.scene.items.getItems).mockResolvedValue([image]);
 
   const { initOnMapDisplay } = await import("../background/onMapDisplay");
-  initOnMapDisplay();
+  const cleanup = initOnMapDisplay();
 
   await vi.waitFor(() => {
     expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
   });
+
+  cleanup();
 }
 
 /**
@@ -56,13 +58,17 @@ async function initAndCaptureListeners(image: Image, sceneSettings = DEFAULT_DIS
   vi.mocked(OBR.scene.items.getItems).mockResolvedValue([image]);
 
   const { initOnMapDisplay } = await import("../background/onMapDisplay");
-  initOnMapDisplay();
+  const cleanup = initOnMapDisplay();
 
   // Wait for initial refresh so startListeners() has been called and the
   // items.onChange / onMetadataChange callbacks are registered.
   await vi.waitFor(() => {
     expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
   });
+
+  // Cancel the EXTRA_REFRESH_DELAY timer so it doesn't fire during subsequent
+  // tests and call into the shared mocks after this module instance is stale.
+  cleanup();
 
   // The last call to items.onChange is the one registered by startListeners().
   const itemsOnChangeCalls = vi.mocked(OBR.scene.items.onChange).mock.calls;
@@ -158,7 +164,7 @@ describe("onMapDisplay integration", () => {
       expect(OBR.scene.local.addItems).not.toHaveBeenCalled();
     });
 
-    it("triggers redraw when items.onChange contains a TFE attachment ID", async () => {
+    it("triggers redraw when items.onChange contains a TFE-relevant token", async () => {
       const record = createDefaultTokenRecord();
       const image = createMockImage({
         [getPluginId(TOKEN_RECORD_METADATA_ID)]: record,
@@ -168,30 +174,17 @@ describe("onMapDisplay integration", () => {
       vi.mocked(OBR.scene.local.deleteItems).mockClear();
       vi.mocked(OBR.scene.local.addItems).mockClear();
 
-      // An item whose ID contains "-tfe-" is a TFE local attachment and should
-      // count as TFE-relevant even though it carries no token metadata.
-      const tfeAttachment = {
-        id: "display-token-tfe-strain-bg-0",
-        type: "SHAPE",
-        layer: "ATTACHMENT",
-        visible: true,
-        scale: { x: 1, y: 1 },
-        position: { x: 0, y: 0 },
-        metadata: {},
-      } as unknown as Item;
-      // Include the original image so getChangedItems finds it unchanged (no-op
-      // add/delete), but the relevance filter must still pass.
-      onItemsChange([image as unknown as Item, tfeAttachment]);
+      // A moved token is TFE-relevant (has metadata) and differs from itemsLast,
+      // so hasTfeRelevantItems passes and getChangedItems finds a real change.
+      const movedImage = { ...image, position: { x: 99, y: 99 } } as Image;
+      onItemsChange([movedImage as unknown as Item]);
 
       await vi.waitFor(() => {
-        // deleteItems is always called (to sweep stale attachments) once a
-        // TFE-relevant item triggers the debounced handler.
         expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
       });
     });
 
     it("debounces rapid items.onChange calls into a single redraw", async () => {
-      vi.useFakeTimers();
       const record = createDefaultTokenRecord();
       const image = createMockImage({
         [getPluginId(TOKEN_RECORD_METADATA_ID)]: record,
@@ -201,15 +194,25 @@ describe("onMapDisplay integration", () => {
       vi.mocked(OBR.scene.local.deleteItems).mockClear();
       vi.mocked(OBR.scene.local.addItems).mockClear();
 
-      // Fire 5 rapid onChange events before the debounce window expires.
-      for (let i = 0; i < 5; i++) onItemsChange([image as unknown as Item]);
+      vi.useFakeTimers();
+      try {
+        // Use a moved image so getChangedItems detects a change (itemsLast was
+        // populated by the initial refreshAll — an identical image would be a no-op).
+        const movedImage = { ...image, position: { x: 50, y: 50 } } as Image;
 
-      // Advance past the debounce delay to flush the single scheduled handler.
-      await vi.runAllTimersAsync();
-      vi.useRealTimers();
+        // Fire 5 rapid onChange events before the debounce window expires.
+        for (let i = 0; i < 5; i++) onItemsChange([movedImage as unknown as Item]);
 
-      // Only one deleteItems call should have been made despite 5 firings.
-      expect(OBR.scene.local.deleteItems).toHaveBeenCalledTimes(1);
+        // Advance only past the debounce delay (150ms). EXTRA_REFRESH_DELAY was
+        // already cancelled by initAndCaptureListeners cleanup, so no stale
+        // timers exist to accidentally flush.
+        await vi.advanceTimersByTimeAsync(200);
+
+        // Only one deleteItems call should have been made despite 5 firings.
+        expect(OBR.scene.local.deleteItems).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("does not redraw when scene metadata changes but DisplaySettings are identical", async () => {

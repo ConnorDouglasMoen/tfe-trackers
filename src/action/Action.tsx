@@ -30,9 +30,9 @@ export default function Action(): React.JSX.Element {
   // ID of the token row currently being dragged, if any.
   const draggedId = useRef<string | null>(null);
 
-  // Wire up scene display metadata listener once.
+  // Wire up scene display metadata listener once; return unsubscribe as cleanup.
   useEffect(() => {
-    initSceneDisplay();
+    return initSceneDisplay();
   }, []);
 
   // Prune tracked IDs that no longer exist in the scene. Runs whenever the

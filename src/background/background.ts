@@ -19,13 +19,17 @@ const contextMenuLabel = "TFE Trackers";
 const TOKEN_MENU_HEIGHT = 600;
 
 OBR.onReady(async () => {
-  fetch("/manifest.json")
-    .then((r) => r.json())
+  // Log plugin name and version from the manifest. The manifest URL is
+  // relative to the page origin so it resolves correctly in both dev and
+  // production builds.
+  fetch(new URL("/manifest.json", window.location.origin).toString())
+    .then((r) => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
     .then((json) =>
       console.log(
         `${json["name"] as string} - version: ${json["version"] as string}`,
       ),
-    );
+    )
+    .catch((err) => console.warn("Could not load manifest.json:", err));
 
   // Player context menu — hidden when trackers are marked hidden by GM.
   OBR.contextMenu.create({
@@ -196,6 +200,7 @@ OBR.onReady(async () => {
     },
   });
 
-  // Start the on-map display system.
-  initOnMapDisplay();
+  // Start the on-map display system. Return value is a cleanup fn (used in
+  // tests); ignored here since the background script runs for the session.
+  void initOnMapDisplay();
 });

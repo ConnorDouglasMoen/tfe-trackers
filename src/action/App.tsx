@@ -3,7 +3,6 @@ import { useOwlbearStore } from "../useOwlbearStore";
 import { useOwlbearStoreSync } from "../useOwlbearStoreSync";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
 import Action from "./Action";
-import "../index.css";
 
 /**
  * Root app for the action popover.

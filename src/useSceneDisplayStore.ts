@@ -8,8 +8,8 @@ export const SCENE_DISPLAY_METADATA_ID = "sceneDisplaySettings";
 interface SceneDisplayState {
   settings: DisplaySettings;
   setSettings: (patch: Partial<DisplaySettings>) => void;
-  /** Called once on mount to wire up OBR.scene.metadata listeners. */
-  init: () => void;
+  /** Called once on mount to wire up OBR.scene.metadata listeners. Returns unsubscribe fn. */
+  init: () => () => void;
 }
 
 export const useSceneDisplayStore = create<SceneDisplayState>()((set) => ({
@@ -40,7 +40,7 @@ export const useSceneDisplayStore = create<SceneDisplayState>()((set) => ({
 
     // Load current value immediately.
     void OBR.scene.getMetadata().then(apply);
-    // Subscribe to changes from any participant.
-    OBR.scene.onMetadataChange(apply);
+    // Subscribe to changes from any participant; return unsubscribe for cleanup.
+    return OBR.scene.onMetadataChange(apply);
   },
 }));

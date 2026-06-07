@@ -1,4 +1,3 @@
-import OBR from "@owlbear-rodeo/sdk";
 import { create } from "zustand";
 import { getPluginId } from "./getPluginId";
 
@@ -99,15 +98,8 @@ export const useTrackedTokensStore = create<TrackedTokensState>()((set, get) => 
     };
     window.addEventListener("storage", handleStorage);
 
-    // Also re-read on any player change as a secondary sync mechanism
-    // (covers same-frame writes that don't fire storage events).
-    const unsubscribePlayer = OBR.player.onChange(() => {
-      set({ trackedTokenIds: loadFromStorage() });
-    });
-
     return () => {
       window.removeEventListener("storage", handleStorage);
-      unsubscribePlayer();
     };
   },
 

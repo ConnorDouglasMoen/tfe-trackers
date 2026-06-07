@@ -2,8 +2,6 @@
 TFE TRACKERS - Reference Document
 ====================================================================
 Project: tfe-trackers
-Location: C:\Users\conno\Coding\personal-repos\owlbear-repos\tfe-trackers
-Reference Repo: C:\Users\conno\Coding\reference-repos\owl-trackers
 
 --------------------------------------------------------------------
 SYSTEM: Tales from Elsewhere (TFE)
@@ -45,11 +43,6 @@ Plugin ID prefix: com.tfe-trackers
 Token metadata key:  "tokenRecord"
 Hidden metadata key: "hidden"
 Scene metadata key:  "sceneDisplaySettings"
-
-OBR.contextMenu has no setEmbedHeight — height fixed at registration.
-  Player embed: PLAYER_MENU_HEIGHT = 420px
-  GM embed:     GM_MENU_HEIGHT     = 560px (includes On-Map Display section)
-  Both values in background.ts — tune as needed.
 
 --------------------------------------------------------------------
 DATA MODEL
@@ -202,10 +195,6 @@ DECISIONS MADE
 - Strain boxes use inline styles (not Tailwind) to avoid purge issues.
 - Strain default for Survivor: 3.
 - "Open Full Editor" hidden when isPopover=true (?popover=1 URL param).
-- Conditions stored as string[]; legacy string migration handled.
-- Complications stored as string[] (same pattern as conditions).
-  Legacy single-string complications migrated to [string] on load.
-- Separate embed heights for player (420px) and GM (560px).
 - Token overrides (TokenDisplayOverrides) stored in TokenRecord.displayOverrides.
   null = inherit from scene; non-null = override for that token only.
   resolveDisplaySettings() merges scene + token visibility overrides before building map items.
@@ -224,7 +213,6 @@ DECISIONS MADE
   without needing or affecting the current selection.
 - TrackedTokenRow re-syncs local record from item prop on each items change
   so concurrent edits (player context menu + GM Action panel) stay in sync.
-- Bubbles render ABOVE token (getTokenTopLeft), not below.
 - Stale tracked token IDs are pruned automatically, not manually:
   useTrackedTokensStore.pruneStaleIds(liveItemIds) removes IDs absent from
   the live scene item list; called from Action.tsx in a useEffect on items
@@ -271,10 +259,8 @@ src/
 
   action/
     action.html / main.tsx / App.tsx
-    Action.tsx                — GM-only: Tracked Tokens list at top,
-                                then On-Map Display settings (scene-level),
-                                including marker/text sizing controls;
-                                calls pruneStaleIds on items change (GM only)
+    Action.tsx                — GM-only: On-Map Display settings (scene-level),
+                                including marker/text sizing controls
     TrackedTokenRow.tsx       — collapsible per-token editor row;
                                 manages own TokenRecord state;
                                 writes to OBR by item ID (not selection)
@@ -289,8 +275,6 @@ src/
                           coupling. Also exports: Stepper, ConditionsEditor.
                           headingLevel prop: "h2" (TokenMenu) / "h3" (TrackedTokenRow).
                           topRowExtra slot: TokenMenu passes GM "Open Editor" button.
-
-  displaySettings/            — UNUSED, delete this directory
 
   test/
     characterDataHelpers.test.ts   — types, factories, guards, migration,
@@ -374,112 +358,20 @@ Manual QA checklist for local Owlbear testing:
   - Test as PLAYER where possible; confirm GM-only controls are unavailable.
 
 --------------------------------------------------------------------
-BUGS FIXED
---------------------------------------------------------------------
-- Font rendering race on scene load (onMapDisplay.ts):
-  Unicode symbols (✕, ✓) rendered as ☒ on first load because fonts weren't
-  ready when OBR built attachment items. Fixed by adding a setTimeout
-  (1000ms) delayed second refreshAll() call after the initial render,
-  matching the owl-trackers reference approach. The extra refresh only
-  fires once per session (guarded by extraRefreshDone flag).
-
---------------------------------------------------------------------
 TODO / OPEN ITEMS
 --------------------------------------------------------------------
-- Appearance pass pending
 - Add User Guide
 - Consider using Red's Wound Markers for injuries.
 
-Quality / functionality backlog:
-- 1. [DONE] Automated tests for characterDataHelpers migration and display-setting
-  resolution. Covers legacy CharacterData blobs, legacy string complications,
-  legacy location -> description migration, missing displayOverrides,
-  displayAlias -> displayName migration, markerScale/textScale defaults,
-  constants, getActiveData/setActiveData, and isTokenRecord edge cases.
-- 2. [DONE] Centralize token-record mutation helpers. Pure functions extracted
-  into src/tokenRecordMutations.ts: applyStrainCurrent, applyStrainMax,
-  applyCharacterType, applyAddCondition, applyRemoveCondition,
-  applyUpdateSeriousInjury, applyUpdateCriticalInjury, applyUpdateLethalInjury,
-  applySetHasSerious, applySetSeriousCount, applySetHasCritical,
-  applySetHasLethal, applyAdjustSeriousTier, applySetDisplayName, applyDataPatch.
-  useCharacterDataStore and TrackedTokenRow both delegate to these helpers.
-  TrackedTokenRow's applyMutation callback now takes (r: TokenRecord) => TokenRecord
-  instead of separate applyDataPatch/applyRecordPatch functions.
-  Tests in src/test/tokenRecordMutations.test.ts.
-- 3. [DONE] Extract a shared TokenEditor component used by both TokenMenu.tsx
-and TrackedTokenRow.tsx. TokenEditor (src/components/TokenEditor.tsx) renders
-the character type toggle, strain section, injuries section, and conditions
-section via props/callbacks — agnostic about persistence target.
-Intentional differences preserved:
-    - headingLevel prop: "h2" in TokenMenu, "h3" in TrackedTokenRow.
-    - topRowExtra render slot: TokenMenu passes the GM "Open Editor" popover
-      button; TrackedTokenRow passes nothing.
-    - Name section: stays in TokenMenu as a top-level <section>; TrackedTokenRow
-      keeps its inline header input (unchanged).
-    - TokenDisplaySection: stays in TokenMenu only.
-    - No-injuries empty message: context-specific copy per isSurvivor.
-  Stepper and ConditionsEditor also extracted into TokenEditor.tsx as named
-  exports (Stepper, ConditionsEditor) — the private per-file duplicates removed.
-  TokenMenu's adjustSerious adapter (setHasSerious + setSeriousCount) is a
-  local helper in TokenMenu that satisfies TokenEditor's onAdjustSeriousTier
-  callback; TrackedTokenRow calls applyAdjustSeriousTier directly.
-- 4. Add write failure handling for OBR metadata updates. Current writes are
-  mostly optimistic fire-and-forget; add user-visible failure state or retry
-  behavior for TokenMenu, TrackedTokenRow, scene display settings, and
-  tracked-token pin/unpin writes. [DEPRIORITIZED: OBR SDK handles transient
-  failures internally; real failure modes are already guarded. Revisit if
-  actual failures are observed in playtesting.]
-- 5. [DONE] Prevent stale tracked-token IDs from accumulating in localStorage.
-  pruneStaleIds(liveItemIds) added to useTrackedTokensStore; called from
-  Action.tsx in a useEffect on items change, GM role only. Silent and automatic
-  — no user-visible confirmation. No-op when nothing changes. Tests added to
-  useTrackedTokensStore.test.ts.
-- 6. [CANNOT DO] Make context-menu pin state explicit. Replace the single
-  "Pin to Action Panel" toggle label with distinct Pin/Unpin menu entries or
-  metadata-aware labels.
-- 7. [DONE] Add bulk GM pin/unpin controls to the Tracked Tokens section.
-  "Pin All" tracks every untracked CHARACTER/MOUNT IMAGE token in the scene.
-  "Unpin All" removes all currently tracked tokens (disabled when list is empty).
-  Both buttons are GM-only, rendered between the section header and the token list.
-  Drag-and-drop reordering also added (all roles): draggable wrapper divs in
-  Action.tsx with HTML5 drag API; reorderTokens() action added to
-  useTrackedTokensStore persists new order to localStorage; drag handle icon
-  rendered in TrackedTokenRow header (six-dot grip, left of chevron).
-- 8. [DONE] Automated tests for on-map helper data behavior. Covers injury slot
-  resolution (survivor vs other seriousCount), empty-vs-filled filtering,
-  complication/condition deduplication (case-insensitive), severity color
-  precedence (lethal > critical > serious > condition), scale clamping,
-  all builder output shapes/colors/IDs, and display-layer gating for
-  injuryDisplay/showConditions.
-- 9. [DONE] Add performance guardrails for on-map redraws. Three changes made
-  to onMapDisplay.ts:
-  (a) Debounce item-change redraws: items.onChange callback deferred 150ms;
-      rapid consecutive fires (e.g. token drag) collapse into one redraw.
-  (b) Skip unrelated item changes: hasTfeRelevantItems() checks the changed
-      set for TFE tokens (have TOKEN_RECORD_METADATA_ID in metadata) or TFE
-      attachment IDs (contain "-tfe-"); returns early if none found.
-  (c) Skip no-op scene metadata changes: onMetadataChange serializes the
-      resolved DisplaySettings and bails if the JSON matches the cached
-      snapshot — prevents redraws when other plugins write scene metadata.
-- 10. Review accessibility for compact controls. Add aria-label/title coverage
-  for segmented controls, size controls, injury slot steppers, strain boxes, and
-  icon buttons; ensure keyboard operation works in both the context menu and
-  Action panel.
-- 11. Replace hand-drawn SVG button icons in React components with a shared icon
-  component or icon library. This will reduce duplicated inline SVGs and make
-  hover/disabled/accessibility behavior consistent across TokenMenu,
-  TrackedTokenRow, InjurySlotCard, and Conditions lists.
-- 12. Add visual QA coverage for the Action panel and token menu. Use a local
-  dev server and browser screenshots at narrow/wide sizes to catch text
-  overflow, cramped segmented controls, and regressions from the appearance
-  pass.
-- 13. Add an in-app quick reference or linked user guide covering Survivor vs
-  Other, injury slots, complications vs conditions, treated behavior, display
-  overrides, tracked tokens, and on-map display sizing.
-- 14. Consider per-token size overrides only if playtesting shows scene-wide sizing
-  is insufficient. If added, extend TokenDisplayOverrides with nullable
-  markerScale/textScale and keep scene defaults as the fallback.
-- 15. Continue expanding coverage for currently untested source modules. Helper
-  and store coverage is strong, but coverage still reports 0% for the React
-  page/component files, background.ts, getTheme.ts, OBR store wrappers, and
-  small entry/lib modules.
+Technical debt:
+- [DONE] Remove redundant `../index.css` import in src/action/App.tsx.
+- [DONE] Fix subscription leak in useSceneDisplayStore.init(): now returns
+  the OBR.scene.onMetadataChange unsubscribe fn; Action.tsx useEffect returns it.
+- [DONE] initOnMapDisplay() now returns a cleanup fn that cancels the
+  EXTRA_REFRESH_DELAY timer; background.ts calls it as void; test helpers
+  call cleanup() after waitFor to prevent timer leakage across tests.
+- [DONE] useOwlbearStoreSync.ts: added setItems to sceneReady useEffect deps array.
+- [DONE] background.ts: fetch("/manifest.json") replaced with absolute URL
+  via window.location.origin + error handling, safe in production builds.
+- [DONE] useTrackedTokensStore.init(): removed OBR.player.onChange subscription
+  (redundant with StorageEvent listener); removed unused OBR import.
