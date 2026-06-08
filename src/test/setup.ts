@@ -4,6 +4,7 @@
  * - Mocks the OBR SDK so tests don't need a real OBR environment.
  */
 import { afterEach, vi } from "vitest";
+import "@testing-library/jest-dom";
 
 // Mock localStorage for environments/Node versions where it might be missing or conflicting.
 class LocalStorageMock {
@@ -127,6 +128,12 @@ vi.mock("@owlbear-rodeo/sdk", () => {
       theme: {
         getTheme: vi.fn(async () => ({ mode: "DARK" })),
         onChange: vi.fn(() => vi.fn()),
+      },
+      viewport: {
+        getScale: vi.fn(async () => 1),
+        getWidth: vi.fn(async () => 800),
+        getHeight: vi.fn(async () => 600),
+        animateTo: vi.fn(async () => {}),
       },
     },
     buildShape: () => new MockBuilder("SHAPE"),

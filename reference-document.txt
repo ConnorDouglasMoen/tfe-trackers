@@ -369,51 +369,42 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
 
 -- BUG / CORRECTNESS --
 
-1. [BUG] `useOwlbearStoreSync` items effect drops `onChange` subscription on
-   scene-not-ready: when sceneReady transitions false→true, the effect re-runs,
-   calls `getItems().then(setItems)`, and registers a new `onChange`. But the
-   previous subscription's unsubscribe fn is returned from the effect — it fires
-   during cleanup and cancels the new subscription before it delivers its first
-   event. The fix is to capture the unsubscribe returned by `onChange` inside
-   the async path and return it from the effect.
+1. [DONE] `useOwlbearStoreSync` stale promise fix: added `cancelled` flag in the
+   items effect so a getItems() promise that resolves after cleanup (scene went
+   not-ready mid-fetch) cannot overwrite the already-cleared items[] state.
    File: src/useOwlbearStoreSync.ts
 
-2. [BUG] `getChangedItems` in `onMapDisplay.ts` does not detect token rotation
-   changes — `image.rotation` is not included in the comparison. If a token is
-   rotated (and only rotated), its attachments are not rebuilt, leaving them
-   offset until another change triggers a redraw.
+2. [WONTFIX] `getChangedItems` does not track rotation — on-map display items
+   do not rotate with their token. This is acceptable behaviour by design.
    File: src/background/onMapDisplay.ts
 
-3. [BUG] `writeTokenRecordToItem` in `itemMetadataHelpers.ts` does not await the
-   `updateItems` call — it's called but the return value is ignored. In practice
-   OBR's `updateItems` is synchronous-like, but the race potential should be
-   addressed to be consistent with `writeTokenRecordToSelection`.
+3. [DONE] All four `updateItems` calls in `itemMetadataHelpers.ts` now awaited:
+   `writeTokenRecordToItem`, `writeTokenRecordToSelection`, `clearTokenData`,
+   and `writeHiddenToSelection`.
    File: src/itemMetadataHelpers.ts
 
 -- CORRECTNESS / DATA --
 
-4. [DATA] `createInjurySlot` uses `Date.now() + Math.random()` for IDs, which is
-   not stable across SSR/test environments and may collide under rapid creation.
-   Consider using `crypto.randomUUID()` (available in all target environments).
+4. [DONE] `createInjurySlot` now uses `crypto.randomUUID()` for slot IDs.
    File: src/characterDataHelpers.ts
 
-5. [DATA] `TokenRecord.displayName` is trimmed at read time in the Action panel
-   (`baseName`) but NOT trimmed before storing in `applySetDisplayName`. A
-   name stored as "  foo  " would render trimmed in the panel but display with
-   whitespace in the map bubble. Trim on write in `applySetDisplayName`.
-   File: src/tokenRecordMutations.ts
+5. [DONE] `applySetDisplayName` now trims whitespace before storing. Two new
+   tests added covering the trim and whitespace-only cases.
+   Files: src/tokenRecordMutations.ts, src/test/tokenRecordMutations.test.ts
 
-6. [DATA] `MAX_CONDITIONS` is hardcoded as 20 in `onMapItemIds.ts`. If more than
-   20 bubble slots are generated (conditions + complications combined can exceed
-   this in edge cases), the excess items get orphaned IDs that are never deleted.
-   Either raise the constant or derive it from actual max conditions+complications.
+6. [WONTFIX] `MAX_CONDITIONS = 20` bubble slot cap is sufficient in practice —
+   accumulating more than 20 conditions + complications on a single token is
+   not an expected use case.
    File: src/background/onMapItemIds.ts
 
 -- TESTS --
 
-7. [TEST] No tests for `TrackedTokenRow` component — the `applyMutation` pattern,
-   name-edit flow, center-on-token, and unpin button are untested at the component
-   level. Consider adding RTL or simple unit tests for the mutation plumbing.
+7. [DONE] RTL component tests written for `TrackedTokenRow`: applyMutation
+   plumbing, record re-sync from item prop, commitName (Enter, matching
+   item.name, pre-fill), cancelEditName (Escape + cancel button), and unpin
+   button. `@testing-library/react` and `@testing-library/user-event` added
+   as devDependencies (requires `pnpm install`).
+   Files: src/test/TrackedTokenRow.test.tsx, package.json
 
 8. [TEST] No tests for `TokenMenu` / `TokenDisplaySection` — the
    `handleAdjustSeriousTier` adapter and display-override button states are

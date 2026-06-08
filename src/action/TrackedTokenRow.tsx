@@ -216,6 +216,7 @@ export function TrackedTokenRow({
               onClick={() => setIsOpen((v) => !v)}
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-text-primary dark:text-text-primary-dark"
               aria-expanded={isOpen}
+              aria-label={`Toggle ${displayName}`}
             >
               <svg
                 viewBox="0 0 16 16"

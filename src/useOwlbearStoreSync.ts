@@ -17,8 +17,19 @@ export function useOwlbearStoreSync() {
   const setItems = useOwlbearStore((state) => state.setItems);
   useEffect(() => {
     if (sceneReady) {
-      OBR.scene.items.getItems().then(setItems);
-      return OBR.scene.items.onChange(setItems);
+      // Guard against stale promise resolution: if the effect cleans up before
+      // getItems() resolves (e.g. sceneReady flips false before the fetch
+      // completes), the resolved value must not overwrite the cleared items[]
+      // that setItems([]) already wrote.
+      let cancelled = false;
+      OBR.scene.items.getItems().then((items) => {
+        if (!cancelled) setItems(items);
+      });
+      const unsubscribe = OBR.scene.items.onChange(setItems);
+      return () => {
+        cancelled = true;
+        unsubscribe();
+      };
     } else {
       setItems([]);
     }

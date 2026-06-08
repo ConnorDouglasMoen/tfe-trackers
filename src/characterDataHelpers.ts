@@ -114,7 +114,7 @@ export function resolveDisplaySettings(
 
 export function createInjurySlot(): InjurySlot {
   return {
-    id: `${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    id: crypto.randomUUID(),
     description: "",
     complications: [],
     treated: false,

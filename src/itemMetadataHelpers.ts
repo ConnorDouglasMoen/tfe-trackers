@@ -27,7 +27,7 @@ export async function writeTokenRecordToItem(
   if (items.length === 0) {
     throw new Error(`Item not found: ${itemId}`);
   }
-  OBR.scene.items.updateItems(items, (mutableItems) => {
+  await OBR.scene.items.updateItems(items, (mutableItems) => {
     for (const item of mutableItems) {
       item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
     }
@@ -45,7 +45,7 @@ export async function writeTokenRecordToSelection(
     throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
   }
 
-  OBR.scene.items.updateItems(selectedItems, (items) => {
+  await OBR.scene.items.updateItems(selectedItems, (items) => {
     for (const item of items) {
       item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
     }
@@ -108,7 +108,7 @@ export async function clearTokenData(itemId: string): Promise<void> {
     getPluginId(HIDDEN_METADATA_ID),
   ];
 
-  OBR.scene.items.updateItems(items, (mutableItems) => {
+  await OBR.scene.items.updateItems(items, (mutableItems) => {
     for (const item of mutableItems) {
       for (const key of keysToDelete) {
         delete item.metadata[key];
@@ -139,7 +139,7 @@ export async function writeHiddenToSelection(hidden: boolean): Promise<void> {
     throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
   }
 
-  OBR.scene.items.updateItems(selectedItems, (items) => {
+  await OBR.scene.items.updateItems(selectedItems, (items) => {
     for (const item of items) {
       item.metadata[getPluginId(HIDDEN_METADATA_ID)] = hidden;
     }

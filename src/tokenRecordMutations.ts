@@ -177,10 +177,12 @@ export function applyAdjustSeriousTier(record: TokenRecord, delta: 1 | -1): Toke
 
 /*
  * Set the custom on-map name bubble text.
+ * Trims leading/trailing whitespace before storing so the stored value
+ * matches what the Action panel and map bubble will display.
  * An empty string hides the bubble on the map.
  */
 export function applySetDisplayName(record: TokenRecord, displayName: string): TokenRecord {
-  return { ...record, displayName };
+  return { ...record, displayName: displayName.trim() };
 }
 
 // ─── Generic active-data patch

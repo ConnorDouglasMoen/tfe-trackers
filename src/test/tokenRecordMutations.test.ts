@@ -430,6 +430,16 @@ describe("applySetDisplayName", () => {
     expect(after.other).toBe(r.other);
   });
 
+  it("trims leading and trailing whitespace before storing", () => {
+    const r = createDefaultTokenRecord();
+    expect(applySetDisplayName(r, "  The Veteran  ").displayName).toBe("The Veteran");
+  });
+
+  it("whitespace-only input is stored as empty string", () => {
+    const r = createDefaultTokenRecord();
+    expect(applySetDisplayName(r, "   ").displayName).toBe("");
+  });
+
   it("does not mutate the original record", () => {
     const r = createDefaultTokenRecord();
     applySetDisplayName(r, "X");
