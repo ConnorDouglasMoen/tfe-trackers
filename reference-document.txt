@@ -466,130 +466,23 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
 
 -- UX / POLISH --
 
-11. [UX] The "Pin to Action Panel" context menu label is static — it always says
+11. [DONE] The "Pin to Action Panel" context menu label is static — it always says
     "Pin" even when the token is already pinned. OBR does not support dynamic
     label changes (static registration), but the label could read
     "Pin / Unpin from Action Panel" to signal toggle behaviour.
     File: src/background/background.ts
 
-12. [UX] Action panel width is fixed at 300px in `manifest.json`. The tracked
+12. [DONE] Action panel width is fixed at 300px in `manifest.json`. The tracked
     token list can become crowded with many tokens. Consider whether 340-360px
     would be a better default (purely cosmetic).
     File: public/manifest.json
 
-13. [UX] `TrackedTokenRow` collapses on unpin but doesn't animate height —
+13. [WONTDO] `TrackedTokenRow` collapses on unpin but doesn't animate height —
     the row disappears abruptly. A brief CSS transition would improve the feel.
 
 -- DEPENDENCY / BUILD --
 
-14. [DEP] `@mui/material` and `@emotion/*` are listed as production dependencies
-    but are not imported anywhere in the current codebase (grep confirms no MUI
-    usage). These add ~300 kB to the bundle unnecessarily and should be removed.
-    File: package.json
-
-15. [BUILD] `manifest.json` sets `"action"."height": 200` as the initial height,
-    but `Action.tsx` calls `OBR.action.setHeight` dynamically via ResizeObserver.
-    The initial 200px causes a visible jump on open. Setting it to a reasonable
-    heuristic (e.g. 400) or the typical minimum would reduce flicker.
-    File: public/manifest.json
-
-16. [BUILD] `mathHelpers.ts` retains `getFillPortion` and `createRoundedRectangle`
-    (copied from the reference repo) that are unused in tfe-trackers. They
-    inflate the background bundle and confuse readers. Remove or relocate them.
-    File: src/background/mathHelpers.ts
-
--- SECURITY / ROBUSTNESS --
-
-17. [ROBUSTNESS] `getTokenRecordFromSelection` falls back to
-    `OBR.scene.items.getItems()` (all items) when called without arguments, then
-    filters by selection. If the scene has many items this is wasteful; it should
-    accept the already-fetched item list (the caller in `TokenMenu` always has it)
-    and skip the full-scene fetch. This is low-priority but worth noting.
-    File: src/itemMetadataHelpers.ts
-
---------------------------------------------------------------------
-AUDIT: REMAINING TECHNICAL TASKS (2025-06)
---------------------------------------------------------------------
-
--- BUG / CORRECTNESS --
-
-1. [BUG] `useOwlbearStoreSync` items effect drops `onChange` subscription on
-   scene-not-ready: when sceneReady transitions false→true, the effect re-runs,
-   calls `getItems().then(setItems)`, and registers a new `onChange`. But the
-   previous subscription's unsubscribe fn is returned from the effect — it fires
-   during cleanup and cancels the new subscription before it delivers its first
-   event. The fix is to capture the unsubscribe returned by `onChange` inside
-   the async path and return it from the effect.
-   File: src/useOwlbearStoreSync.ts
-
-2. [BUG] `getChangedItems` in `onMapDisplay.ts` does not detect token rotation
-   changes — `image.rotation` is not included in the comparison. If a token is
-   rotated (and only rotated), its attachments are not rebuilt, leaving them
-   offset until another change triggers a redraw.
-   File: src/background/onMapDisplay.ts
-
-3. [BUG] `writeTokenRecordToItem` in `itemMetadataHelpers.ts` does not await the
-   `updateItems` call — it's called but the return value is ignored. In practice
-   OBR's `updateItems` is synchronous-like, but the race potential should be
-   addressed to be consistent with `writeTokenRecordToSelection`.
-   File: src/itemMetadataHelpers.ts
-
--- CORRECTNESS / DATA --
-
-4. [DATA] `createInjurySlot` uses `Date.now() + Math.random()` for IDs, which is
-   not stable across SSR/test environments and may collide under rapid creation.
-   Consider using `crypto.randomUUID()` (available in all target environments).
-   File: src/characterDataHelpers.ts
-
-5. [DATA] `TokenRecord.displayName` is trimmed at read time in the Action panel
-   (`baseName`) but NOT trimmed before storing in `applySetDisplayName`. A
-   name stored as "  foo  " would render trimmed in the panel but display with
-   whitespace in the map bubble. Trim on write in `applySetDisplayName`.
-   File: src/tokenRecordMutations.ts
-
-6. [DATA] `MAX_CONDITIONS` is hardcoded as 20 in `onMapItemIds.ts`. If more than
-   20 bubble slots are generated (conditions + complications combined can exceed
-   this in edge cases), the excess items get orphaned IDs that are never deleted.
-   Either raise the constant or derive it from actual max conditions+complications.
-   File: src/background/onMapItemIds.ts
-
--- TESTS --
-
-7. [TEST] No tests for `TrackedTokenRow` component — the `applyMutation` pattern,
-   name-edit flow, center-on-token, and unpin button are untested at the component
-   level. Consider adding RTL or simple unit tests for the mutation plumbing.
-
-8. [TEST] No tests for `TokenMenu` / `TokenDisplaySection` — the
-   `handleAdjustSeriousTier` adapter and display-override button states are
-   exercised only by manual QA.
-
-9. [TEST] `onMapDisplay.test.ts` does not cover: the generation-counter abort
-   (stale `refreshAll` being cancelled mid-flight), the `sceneListenersSet`
-   guard preventing double-subscription, or the `onReadyChange → not-ready`
-   teardown path.
-
-10. [TEST] `useOwlbearStoreSync` has no tests; the subscription-lifecycle bug
-    noted in item 1 above is therefore invisible to CI.
-
--- UX / POLISH --
-
-11. [UX] The "Pin to Action Panel" context menu label is static — it always says
-    "Pin" even when the token is already pinned. OBR does not support dynamic
-    label changes (static registration), but the label could read
-    "Pin / Unpin from Action Panel" to signal toggle behaviour.
-    File: src/background/background.ts
-
-12. [UX] Action panel width is fixed at 300px in `manifest.json`. The tracked
-    token list can become crowded with many tokens. Consider whether 340–360px
-    would be a better default (purely cosmetic).
-    File: public/manifest.json
-
-13. [UX] `TrackedTokenRow` collapses on unpin but doesn't animate height —
-    the row disappears abruptly. A brief CSS transition would improve the feel.
-
--- DEPENDENCY / BUILD --
-
-14. [DEP] `@mui/material` and `@emotion/*` are listed as production dependencies
+14. [DONE] `@mui/material` and `@emotion/*` are listed as production dependencies
     but are not imported anywhere in the current codebase (grep confirms no MUI
     usage). These add ~300 kB to the bundle unnecessarily and should be removed.
     File: package.json

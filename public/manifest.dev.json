@@ -12,6 +12,6 @@
     "icon": "http://localhost:5173/tfe-cowboy.svg",
     "popover": "http://localhost:5173/src/action/action.html",
     "height": 200,
-    "width": 300
+    "width": 320
   }
 }

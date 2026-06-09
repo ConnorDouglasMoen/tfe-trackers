@@ -97,7 +97,7 @@ OBR.onReady(async () => {
     icons: [
       {
         icon: menuIcon,
-        label: "Pin to Action Panel",
+        label: "Pin/Unpin to Action Panel",
         filter: {
           every: [
             { key: "layer", value: "CHARACTER", coordinator: "||" },
