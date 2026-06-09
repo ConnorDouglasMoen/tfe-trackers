@@ -81,6 +81,52 @@ async function initAndCaptureListeners(image: Image, sceneSettings = DEFAULT_DIS
   return { onItemsChange, onMetaChange };
 }
 
+/**
+ * Helper: captures the onReadyChange callbacks registered during init.
+ * Returns both the top-level one (registered before any await) and the
+ * inner one registered by startListeners(), plus the items.onChange
+ * callback and metadata.onChange callback.
+ *
+ * This version waits for the initial refresh then reads all registrations
+ * so tests can invoke each callback directly.
+ */
+async function initAndCaptureAllListeners(image: Image, sceneSettings = DEFAULT_DISPLAY_SETTINGS) {
+  vi.resetModules();
+  vi.mocked(OBR.scene.isReady).mockResolvedValue(true);
+  vi.mocked(OBR.scene.getMetadata).mockResolvedValue({
+    [getPluginId(SCENE_DISPLAY_METADATA_ID)]: sceneSettings,
+  });
+  vi.mocked(OBR.scene.grid.getDpi).mockResolvedValue(150);
+  vi.mocked(OBR.scene.items.getItems).mockResolvedValue([image]);
+
+  const { initOnMapDisplay } = await import("../background/onMapDisplay");
+  const cleanup = initOnMapDisplay();
+
+  await vi.waitFor(() => {
+    expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
+  });
+
+  cleanup();
+
+  // onReadyChange is called twice: once in initOnMapDisplay (top-level),
+  // once in startListeners(). We want both.
+  const readyChangeCalls = vi.mocked(OBR.scene.onReadyChange).mock.calls;
+  // First registration: top-level async handler
+  const onReadyChangeOuter = readyChangeCalls[0][0] as (ready: boolean) => void;
+  // Second registration (if present): startListeners() inner handler
+  const onReadyChangeInner = readyChangeCalls.length > 1
+    ? (readyChangeCalls[1][0] as (ready: boolean) => void)
+    : null;
+
+  const itemsOnChangeCalls = vi.mocked(OBR.scene.items.onChange).mock.calls;
+  const onItemsChange = itemsOnChangeCalls[itemsOnChangeCalls.length - 1][0] as (items: Item[]) => void;
+
+  const metaCalls = vi.mocked(OBR.scene.onMetadataChange).mock.calls;
+  const onMetaChange = metaCalls[metaCalls.length - 1][0] as (meta: Record<string, unknown>) => void;
+
+  return { onReadyChangeOuter, onReadyChangeInner, onItemsChange, onMetaChange };
+}
+
 describe("onMapDisplay integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -255,6 +301,131 @@ describe("onMapDisplay integration", () => {
 
       await vi.waitFor(() => {
         expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
+      });
+    });
+  });
+
+  // ─── generation-counter abort ───────────────────────────────────────────────
+  describe("generation-counter abort", () => {
+    it("aborts a stale refreshAll when a newer one starts before the first await resolves", async () => {
+      const record = createDefaultTokenRecord();
+      const image = createMockImage({
+        [getPluginId(TOKEN_RECORD_METADATA_ID)]: record,
+      });
+
+      vi.resetModules();
+      vi.mocked(OBR.scene.isReady).mockResolvedValue(true);
+      vi.mocked(OBR.scene.getMetadata).mockResolvedValue({
+        [getPluginId(SCENE_DISPLAY_METADATA_ID)]: DEFAULT_DISPLAY_SETTINGS,
+      });
+      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([image]);
+
+      // Make the first getDpi call hang indefinitely so the first refreshAll
+      // pauses at its first await, giving the second call time to increment
+      // refreshGeneration before the first resumes.
+      let resolveDpi!: (dpi: number) => void;
+      const hangingDpi = new Promise<number>((res) => { resolveDpi = res; });
+      vi.mocked(OBR.scene.grid.getDpi)
+        .mockReturnValueOnce(hangingDpi)           // first refreshAll hangs
+        .mockResolvedValue(150);                    // subsequent calls resolve normally
+
+      const { initOnMapDisplay } = await import("../background/onMapDisplay");
+      const cleanup = initOnMapDisplay();
+
+      // Allow the first refreshAll to start and stall at getDpi.
+      await new Promise((r) => setTimeout(r, 0));
+
+      vi.mocked(OBR.scene.local.deleteItems).mockClear();
+      vi.mocked(OBR.scene.local.addItems).mockClear();
+
+      // Trigger a second refreshAll by firing onReadyChange(true) via the
+      // outer handler, which also calls getMetadata + refreshAll synchronously.
+      // Capture the outer handler from the first registration.
+      const outerHandler = vi.mocked(OBR.scene.onReadyChange).mock.calls[0][0] as
+        (ready: boolean) => void | Promise<void>;
+      void outerHandler(true);
+
+      // Let the second refreshAll complete (getDpi returns 150 now).
+      await vi.waitFor(() => {
+        expect(OBR.scene.local.deleteItems).toHaveBeenCalledTimes(1);
+      });
+
+      // Now let the first stalled refreshAll resume — it should find
+      // generation !== refreshGeneration and return without calling deleteItems again.
+      resolveDpi(150);
+      await new Promise((r) => setTimeout(r, 50));
+
+      // deleteItems should still be exactly 1 — the stale run was aborted.
+      expect(OBR.scene.local.deleteItems).toHaveBeenCalledTimes(1);
+
+      cleanup();
+    });
+  });
+
+  // ─── sceneListenersSet guard ─────────────────────────────────────────────────
+  describe("sceneListenersSet guard", () => {
+    it("does not double-subscribe items.onChange when startListeners is called twice", async () => {
+      const record = createDefaultTokenRecord();
+      const image = createMockImage({
+        [getPluginId(TOKEN_RECORD_METADATA_ID)]: record,
+      });
+
+      const { onReadyChangeOuter } = await initAndCaptureAllListeners(image);
+
+      // Record how many times items.onChange has been subscribed after initial setup.
+      const subscribeCountBefore = vi.mocked(OBR.scene.items.onChange).mock.calls.length;
+
+      // Fire onReadyChange(true) again — startListeners() should guard with
+      // sceneListenersSet and NOT register a second items.onChange subscription.
+      vi.mocked(OBR.scene.local.deleteItems).mockClear();
+      vi.mocked(OBR.scene.local.addItems).mockClear();
+      void onReadyChangeOuter(true);
+
+      await vi.waitFor(() => {
+        expect(OBR.scene.local.deleteItems).toHaveBeenCalled();
+      });
+
+      const subscribeCountAfter = vi.mocked(OBR.scene.items.onChange).mock.calls.length;
+      // No new items.onChange subscription should have been added.
+      expect(subscribeCountAfter).toBe(subscribeCountBefore);
+    });
+  });
+
+  // ─── onReadyChange → not-ready teardown ─────────────────────────────────────
+  describe("onReadyChange → not-ready teardown", () => {
+    it("unsubscribes the items listener and resets sceneListenersSet when scene goes not-ready", async () => {
+      const record = createDefaultTokenRecord();
+      const image = createMockImage({
+        [getPluginId(TOKEN_RECORD_METADATA_ID)]: record,
+      });
+
+      // Provide a spy unsubscribe function so we can assert it was called.
+      const unsubSpy = vi.fn();
+      vi.mocked(OBR.scene.items.onChange).mockReturnValue(unsubSpy);
+
+      const { onReadyChangeInner } = await initAndCaptureAllListeners(image);
+
+      expect(onReadyChangeInner).not.toBeNull();
+
+      vi.mocked(OBR.scene.local.deleteItems).mockClear();
+      vi.mocked(OBR.scene.items.onChange).mockClear();
+
+      // Fire the inner onReadyChange(false) to simulate scene going not-ready.
+      onReadyChangeInner!(false);
+
+      // The items.onChange unsubscribe function should have been called.
+      expect(unsubSpy).toHaveBeenCalledTimes(1);
+
+      // sceneListenersSet is reset, so a subsequent startListeners() call
+      // (triggered by a new onReadyChange(true)) re-subscribes items.onChange.
+      vi.mocked(OBR.scene.items.onChange).mockReturnValue(vi.fn());
+      vi.mocked(OBR.scene.local.deleteItems).mockClear();
+
+      // Trigger re-init via the inner handler going true again.
+      void onReadyChangeInner!(true);
+
+      await vi.waitFor(() => {
+        expect(OBR.scene.items.onChange).toHaveBeenCalled();
       });
     });
   });

@@ -425,10 +425,21 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
    `TokenDisplaySection` exported from `TokenMenu.tsx` to enable isolation.
    Files: src/test/TokenMenu.test.tsx, src/tokenMenu/TokenMenu.tsx
 
-9. [TEST] `onMapDisplay.test.ts` does not cover: the generation-counter abort
-   (stale `refreshAll` being cancelled mid-flight), the `sceneListenersSet`
-   guard preventing double-subscription, or the `onReadyChange → not-ready`
-   teardown path.
+9. [DONE] `onMapDisplay.test.ts` extended with three new describe blocks:
+   - generation-counter abort: stalls the first refreshAll at getDpi via a
+     hanging promise, fires a second refreshAll via onReadyChange(true), lets
+     the second complete, then resolves the stall — asserts deleteItems is
+     called exactly once (stale run aborted after its first await).
+   - sceneListenersSet guard: fires onReadyChange(true) a second time after
+     init; asserts items.onChange subscription count is unchanged (no
+     double-subscribe).
+   - not-ready teardown: seeds items.onChange with a spy unsubscribe fn,
+     fires inner onReadyChange(false), asserts unsub called; then fires
+     onReadyChange(true) and asserts items.onChange re-subscribed.
+   Helper `initAndCaptureAllListeners` added: captures both onReadyChange
+   registrations (outer top-level + inner startListeners), plus onItemsChange
+   and onMetaChange.
+   File: src/test/onMapDisplay.test.ts
 
 10. [TEST] `useOwlbearStoreSync` has no tests; the subscription-lifecycle bug
     noted in item 1 above is therefore invisible to CI.
