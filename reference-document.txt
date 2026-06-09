@@ -253,7 +253,7 @@ src/
 
   tokenMenu/
     tokenMenu.html / main.tsx / App.tsx
-    TokenMenu.tsx             — TokenDisplaySection (all users): per-token
+    TokenMenu.tsx             — TokenDisplaySection (exported; all users): per-token
                                 overrides for Strain/Injuries/Conditions;
                                 Scene = inherit, Show/Hide or All/Filled/None = override
 
@@ -309,6 +309,15 @@ src/
                                      StorageEvent sync; malformed data resilience;
                                      pruneStaleIds: removes stale IDs, persists
                                      to storage, no-op when nothing changes
+    TrackedTokenRow.test.tsx       — applyMutation plumbing, record re-sync from
+                                     item prop, commitName (Enter, item.name match,
+                                     pre-fill), cancelEditName (Escape + button),
+                                     unpin button
+    TokenMenu.test.tsx             — handleAdjustSeriousTier adapter (all 6 tier
+                                     transitions); TokenDisplaySection RTL:
+                                     collapse/expand, showStrain/showConditions/
+                                     injuryDisplay/showName buttons — active class
+                                     + store write; pre-seeded store state
 
 public/
   manifest.json               — plugin icon: tales-from-elsewhere-logo.svg
@@ -406,9 +415,15 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
    as devDependencies (requires `pnpm install`).
    Files: src/test/TrackedTokenRow.test.tsx, package.json
 
-8. [TEST] No tests for `TokenMenu` / `TokenDisplaySection` — the
-   `handleAdjustSeriousTier` adapter and display-override button states are
-   exercised only by manual QA.
+8. [DONE] Tests written for `TokenMenu` / `TokenDisplaySection`:
+   - `handleAdjustSeriousTier` adapter: all 6 tier transitions (0→1, 1→2,
+     clamped at 2; 2→1, 1→0, clamped at 0) tested via store directly.
+   - `TokenDisplaySection` RTL tests: collapse/expand toggle; showStrain,
+     showConditions, injuryDisplay (all 4 options), and showName button
+     states — active class reflects current store value; clicking each
+     button writes the correct override to the store.
+   `TokenDisplaySection` exported from `TokenMenu.tsx` to enable isolation.
+   Files: src/test/TokenMenu.test.tsx, src/tokenMenu/TokenMenu.tsx
 
 9. [TEST] `onMapDisplay.test.ts` does not cover: the generation-counter abort
    (stale `refreshAll` being cancelled mid-flight), the `sceneListenersSet`

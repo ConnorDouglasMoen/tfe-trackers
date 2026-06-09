@@ -33,7 +33,7 @@ import TextInput from "../components/TextInput";
  * Rendered only in the context menu — the Action panel edits scene-level
  * settings and doesn't need per-token overrides in the tracked-token rows.
  */
-function TokenDisplaySection(): React.JSX.Element {
+export function TokenDisplaySection(): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
   const overrides = useCharacterDataStore((state) => state.record.displayOverrides);
   const setDisplayOverride = useCharacterDataStore((state) => state.setDisplayOverride);
