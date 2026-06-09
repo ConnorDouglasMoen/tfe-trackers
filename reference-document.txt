@@ -318,6 +318,11 @@ src/
                                      collapse/expand, showStrain/showConditions/
                                      injuryDisplay/showName buttons — active class
                                      + store write; pre-seeded store state
+    useOwlbearStoreSync.test.ts    — scene ready/not-ready lifecycle; items
+                                     subscription (getItems, onChange, unsub,
+                                     clear on not-ready); stale-promise guard;
+                                     player sync (role, selection, onChange);
+                                     theme sync (getTheme, onChange)
 
 public/
   manifest.json               — plugin icon: tales-from-elsewhere-logo.svg
@@ -441,8 +446,23 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
    and onMetaChange.
    File: src/test/onMapDisplay.test.ts
 
-10. [TEST] `useOwlbearStoreSync` has no tests; the subscription-lifecycle bug
-    noted in item 1 above is therefore invisible to CI.
+10. [DONE] `useOwlbearStoreSync` tests written:
+    - Scene ready/not-ready lifecycle: isReady() true/false on mount;
+      onReadyChange fires true/false.
+    - Items subscription: getItems called + items set when ready;
+      onChange registered; onChange callback updates store; items cleared
+      to [] on not-ready; unsubscribe called on not-ready; getItems not
+      called when sceneReady=false.
+    - Stale-promise guard (item 1 regression): getItems resolves after
+      sceneReady goes false — stale result must NOT overwrite the [] already
+      set by the not-ready transition.
+    - Player sync: getRole/getSelection on mount; onChange updates role +
+      selection; onChange subscribed.
+    - Theme sync: getTheme on mount; onChange updates themeMode; onChange
+      subscribed.
+    OBR mock in setup.ts patched to add getRole and type-annotate
+    getSelection return value.
+    Files: src/test/useOwlbearStoreSync.test.ts, src/test/setup.ts
 
 -- UX / POLISH --
 

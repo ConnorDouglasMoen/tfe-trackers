@@ -102,9 +102,10 @@ vi.mock("@owlbear-rodeo/sdk", () => {
     default: {
       player: {
         onChange: vi.fn(() => vi.fn()), // returns a no-op unsubscribe fn
+        getRole: vi.fn(async () => "PLAYER" as const),
         getMetadata: vi.fn(async () => ({})),
         setMetadata: vi.fn(async () => {}),
-        getSelection: vi.fn(async () => []),
+        getSelection: vi.fn(async () => [] as string[] | undefined),
       },
       scene: {
         isReady: vi.fn(async () => false),
