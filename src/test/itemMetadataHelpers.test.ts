@@ -88,7 +88,7 @@ describe("itemMetadataHelpers", () => {
   });
 
   describe("getTokenRecordFromSelection", () => {
-    it("retrieves the record of the selected item when items are passed", async () => {
+    it("retrieves the record of the selected item from the provided items list", async () => {
       const record = createDefaultTokenRecord();
       record.displayName = "Direct Item";
       const mockItem = {
@@ -102,27 +102,11 @@ describe("itemMetadataHelpers", () => {
 
       const result = await getTokenRecordFromSelection([mockItem]);
       expect(result.displayName).toBe("Direct Item");
+      // getItems should NOT be called — items were already provided.
+      expect(OBR.scene.items.getItems).not.toHaveBeenCalled();
     });
 
-    it("retrieves from scene if items are not passed", async () => {
-      const record = createDefaultTokenRecord();
-      record.displayName = "Scene Item";
-      const mockItem = {
-        id: "selected-1",
-        metadata: {
-          [getPluginId("tokenRecord")]: record,
-        },
-      } as any;
-
-      vi.mocked(OBR.player.getSelection).mockResolvedValue(["selected-1"]);
-      vi.mocked(OBR.scene.items.getItems).mockResolvedValue([mockItem]);
-
-      const result = await getTokenRecordFromSelection();
-      expect(result.displayName).toBe("Scene Item");
-      expect(OBR.scene.items.getItems).toHaveBeenCalled();
-    });
-
-    it("throws TypeError if selected item not in items list", async () => {
+    it("throws TypeError if the selected item is not in the provided list", async () => {
       vi.mocked(OBR.player.getSelection).mockResolvedValue(["selected-1"]);
       await expect(getTokenRecordFromSelection([])).rejects.toThrow(
         "No selected item found"

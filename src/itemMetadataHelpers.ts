@@ -52,11 +52,13 @@ export async function writeTokenRecordToSelection(
   });
 }
 
-/** Read and migrate a TokenRecord from the currently selected item. */
+/** Read and migrate a TokenRecord from the currently selected item.
+ * Accepts the already-fetched items list to avoid a redundant full-scene
+ * getItems() call — the caller (TokenMenu) always has items available.
+ */
 export async function getTokenRecordFromSelection(
-  items?: Item[],
+  items: Item[],
 ): Promise<TokenRecord> {
-  if (items === undefined) items = await OBR.scene.items.getItems();
   const selection = await OBR.player.getSelection();
   const selectedItem = items.find((item) => item.id === selection?.[0]);
   if (selectedItem === undefined) throw new TypeError("No selected item found");

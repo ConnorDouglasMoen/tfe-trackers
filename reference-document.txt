@@ -285,8 +285,8 @@ src/
                                      cross-blob isolation
     itemMetadataHelpers.test.ts    — read/write/clear metadata; hidden flag;
                                      legacy key fallback; new-key-wins precedence
-    mathHelpers.test.ts            — getFillPortion, createRoundedRectangle,
-                                     getImageCenter
+    mathHelpers.test.ts            — getImageCenter (scale, rotation, DPI,
+                                     offset, identity, negative scale cases)
     onMapHelpers.test.ts           — buildStrainItems, buildInjuryItems,
                                      buildConditionItems, buildNameBubble;
                                      survivor vs other seriousCount;
@@ -487,22 +487,22 @@ AUDIT: REMAINING TECHNICAL TASKS (2025-06)
     usage). These add ~300 kB to the bundle unnecessarily and should be removed.
     File: package.json
 
-15. [BUILD] `manifest.json` sets `"action"."height": 200` as the initial height,
+15. [WONTDO] `manifest.json` sets `"action"."height": 200` as the initial height,
     but `Action.tsx` calls `OBR.action.setHeight` dynamically via ResizeObserver.
     The initial 200px causes a visible jump on open. Setting it to a reasonable
     heuristic (e.g. 400) or the typical minimum would reduce flicker.
     File: public/manifest.json
 
-16. [BUILD] `mathHelpers.ts` retains `getFillPortion` and `createRoundedRectangle`
-    (copied from the reference repo) that are unused in tfe-trackers. They
-    inflate the background bundle and confuse readers. Remove or relocate them.
+16. [DONE] `getFillPortion` and `createRoundedRectangle` were already removed
+    from `mathHelpers.ts` (resolved between sessions). The file now only exports
+    `getImageCenter`. The test file already only tests `getImageCenter`.
     File: src/background/mathHelpers.ts
 
 -- SECURITY / ROBUSTNESS --
 
-17. [ROBUSTNESS] `getTokenRecordFromSelection` falls back to
-    `OBR.scene.items.getItems()` (all items) when called without arguments, then
-    filters by selection. If the scene has many items this is wasteful; it should
-    accept the already-fetched item list (the caller in `TokenMenu` always has it)
-    and skip the full-scene fetch. This is low-priority but worth noting.
-    File: src/itemMetadataHelpers.ts
+17. [DONE] `getTokenRecordFromSelection` now requires an explicit `items: Item[]`
+    parameter — the optional fallback `OBR.scene.items.getItems()` call has been
+    removed. `TokenMenu` already passed items (no call-site change needed).
+    Test updated: removed the "no args" test; added assertion that `getItems`
+    is NOT called when items are provided.
+    Files: src/itemMetadataHelpers.ts, src/test/itemMetadataHelpers.test.ts
