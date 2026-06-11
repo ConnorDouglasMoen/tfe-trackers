@@ -15,6 +15,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@emotion/react": "^11.11.4",
+    "@emotion/styled": "^11.11.5",
+    "@mui/material": "^5.15.10",
     "@owlbear-rodeo/sdk": "3.1.0",
     "clsx": "^2.1.1",
     "react": "^19.0.0",
