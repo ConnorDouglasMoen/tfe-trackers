@@ -1,19 +1,83 @@
 import { useRef, useEffect, useState } from "react";
-import { Item } from "@owlbear-rodeo/sdk";
+import OBR, { Item } from "@owlbear-rodeo/sdk";
+import { InjuryDisplay } from "../characterDataHelpers";
 import { useOwlbearStore } from "../useOwlbearStore";
 import { useSceneDisplayStore } from "../useSceneDisplayStore";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
-import { TrackedTokenRow } from "./TrackedTokenRow";
 import { getTokenRecordFromItem } from "../itemMetadataHelpers";
-import OBR from "@owlbear-rodeo/sdk";
+import SegmentedControl from "../components/SegmentedControl";
+import { TrackedTokenRow } from "./TrackedTokenRow";
+
+const SIZE_OPTIONS = [
+  { label: "S", value: 0.75 },
+  { label: "M", value: 1 },
+  { label: "L", value: 1.25 },
+  { label: "XL", value: 1.5 },
+];
+
+const INJURY_OPTIONS: Array<{ label: string; value: InjuryDisplay }> = [
+  { label: "All", value: "all" },
+  { label: "Filled", value: "filled-only" },
+  { label: "None", value: "none" },
+];
+
+const settingRowClass =
+  "flex items-center justify-between text-sm text-text-primary dark:text-text-primary-dark";
+const bulkButtonClass =
+  "flex-1 rounded-md border border-white/10 bg-black/10 px-2 py-1 text-xs font-medium text-text-secondary hover:bg-black/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/5 dark:text-text-secondary-dark dark:hover:bg-white/10 dark:hover:text-text-primary-dark";
+const dividerClass = "border-text-primary/10 dark:border-text-primary-dark/10";
+const sectionHeadingClass = "text-sm font-semibold text-text-primary dark:text-text-primary-dark";
+const helpTextClass = "text-xs text-text-secondary dark:text-text-secondary-dark";
+
+function Switch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className={`relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition duration-150 ${
+        checked ? "bg-[#74649f]" : "bg-black/20 dark:bg-white/20"
+      }`}
+    >
+      <span
+        className={`inline-block size-3.5 rounded-full bg-white transition duration-150 ${
+          checked ? "translate-x-5" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+}
 
 /**
- * Action panel content — shown when a scene is open.
- *
- * GM-only: Tracked Tokens list (per-token editing) at top,
- * followed by On-Map Display settings (scene-level).
- * Players see a notice that GM access is required.
+ * Label each item by its custom display name, else its item name. Names that
+ * appear more than once get a numeric suffix ("Goblin 1", "Goblin 2").
  */
+function buildDisplayNames(items: Item[]): Map<string, string> {
+  const baseNames = items.map((item) => {
+    const name = getTokenRecordFromItem(item).displayName.trim();
+    if (name !== "") return name;
+    return item.name.trim() !== "" ? item.name.trim() : `Token ${item.id.slice(0, 6)}`;
+  });
+
+  const counts = new Map<string, number>();
+  for (const base of baseNames) counts.set(base, (counts.get(base) ?? 0) + 1);
+
+  const seen = new Map<string, number>();
+  const result = new Map<string, string>();
+  items.forEach((item, i) => {
+    const base = baseNames[i];
+    if ((counts.get(base) ?? 0) > 1) {
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      result.set(item.id, `${base} ${n}`);
+    } else {
+      result.set(item.id, base);
+    }
+  });
+  return result;
+}
+
+/** Action panel: the tracked-token list for everyone, plus scene settings for the GM. */
 export default function Action(): React.JSX.Element {
   const mode = useOwlbearStore((state) => state.themeMode);
   const role = useOwlbearStore((state) => state.role);
@@ -27,138 +91,98 @@ export default function Action(): React.JSX.Element {
   const untrackToken = useTrackedTokensStore((state) => state.untrackToken);
   const reorderTokens = useTrackedTokensStore((state) => state.reorderTokens);
 
-  // ID of the token row currently being dragged, if any.
-  const draggedId = useRef<string | null>(null);
+  useEffect(() => initSceneDisplay(), []);
 
-  // Wire up scene display metadata listener once; return unsubscribe as cleanup.
+  // Forget pinned tokens that were deleted from the scene. Skipped while the
+  // item list is still empty so pins aren't wiped before the scene loads.
   useEffect(() => {
-    return initSceneDisplay();
-  }, []);
-
-  // Prune tracked IDs that no longer exist in the scene. Runs whenever the
-  // scene item list changes (tokens added, removed, or updated). Guards against
-  // the initial render where items is still [] before the scene fetch resolves —
-  // without this guard, pruneStaleIds([]) would wipe all pinned tokens on load.
-  useEffect(() => {
-    if (items.length === 0) return;
-    pruneStaleIds(items.map((item) => item.id));
+    if (items.length > 0) pruneStaleIds(items.map((item) => item.id));
   }, [items]);
 
-  // Resolve live Item objects for pinned token IDs.
-  // Filters out IDs whose items have been deleted from the scene.
-  const trackedItems = trackedTokenIds
-    .map((id) => items.find((item) => item.id === id))
-    .filter((item): item is NonNullable<typeof item> => item !== undefined);
-
-  // Build display names: prefer the token's stored displayName over its OBR item name.
-  // If multiple tokens share the same resolved base name, append a 1-based
-  // numeric suffix to each duplicate (e.g. "Goblin 1", "Goblin 2").
-  const displayNames: Map<string, string> = (() => {
-    const result = new Map<string, string>();
-    const baseName = (item: Item) => {
-      const name = getTokenRecordFromItem(item).displayName.trim();
-      return name || item.name.trim() || `Token ${item.id.slice(0, 6)}`;
-    };
-    // Count occurrences of each base name.
-    const nameCounts = new Map<string, number>();
-    for (const item of trackedItems) {
-      const base = baseName(item);
-      nameCounts.set(base, (nameCounts.get(base) ?? 0) + 1);
-    }
-    // Assign suffixes only where names collide.
-    const nameIndex = new Map<string, number>();
-    for (const item of trackedItems) {
-      const base = baseName(item);
-      const count = nameCounts.get(base) ?? 1;
-      if (count > 1) {
-        const idx = (nameIndex.get(base) ?? 0) + 1;
-        nameIndex.set(base, idx);
-        result.set(item.id, `${base} ${idx}`);
-      } else {
-        result.set(item.id, base);
-      }
-    }
-    return result;
-  })();
-
-  // Index of the row currently being dragged over — used to show a drop
-  // indicator without mutating store state on every dragover event.
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-
-  // Resize the action popover dynamically to fit content.
-  const divRef = useRef<HTMLDivElement>(null);
+  // Resize the popover to fit its content.
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = divRef.current;
+    const el = contentRef.current;
     if (el === null) return;
     const observer = new ResizeObserver((entries) => {
       const height = entries[0]?.contentRect.height ?? 0;
-      OBR.action.setHeight(Math.ceil(height) + 8);
+      void OBR.action.setHeight(Math.ceil(height) + 8);
     });
     observer.observe(el);
     return () => {
       observer.disconnect();
-      OBR.action.setHeight(150);
+      void OBR.action.setHeight(150);
     };
   }, []);
 
-  const rowClass =
-    "flex items-center justify-between text-sm text-text-primary dark:text-text-primary-dark";
-  const sizeOptions = [
-    { label: "S", value: 0.75 },
-    { label: "M", value: 1 },
-    { label: "L", value: 1.25 },
-    { label: "XL", value: 1.5 },
-  ] as const;
-  const segmentedClass =
-    "flex items-center gap-0.5 rounded-lg bg-black/10 p-0.5 dark:bg-white/10";
-  const segmentClass = (active: boolean) =>
-    `rounded-md px-2 py-0.5 text-xs font-semibold transition duration-150 ${
-      active
-        ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-        : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
-    }`;
-  const trackClass = (on: boolean) =>
-    `relative inline-flex h-5 w-9 cursor-pointer items-center rounded-full transition duration-150 ${
-      on ? "bg-[#74649f]" : "bg-black/20 dark:bg-white/20"
-    }`;
-  const thumbClass = (on: boolean) =>
-    `inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-150 ${
-      on ? "translate-x-5" : "translate-x-1"
-    }`;
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const trackedItems = trackedTokenIds
+    .map((id) => itemsById.get(id))
+    .filter((item): item is Item => item !== undefined);
+  const displayNames = buildDisplayNames(trackedItems);
 
-  const Toggle = ({
-    checked,
-    onChange,
-  }: {
-    checked: boolean;
-    onChange: () => void;
-  }) => (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={trackClass(checked)}
-    >
-      <span className={thumbClass(checked)} />
-    </button>
-  );
+  // Drag-to-reorder. `dragOverIndex` is where the dragged row would land once
+  // it has been removed from the list.
+  const draggedId = useRef<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const draggedIndex =
+    draggedId.current === null ? -1 : trackedTokenIds.indexOf(draggedId.current);
+
+  const endDrag = () => {
+    draggedId.current = null;
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const fromId = draggedId.current;
+    const insertAt = dragOverIndex;
+    endDrag();
+    if (fromId === null || insertAt === null) return;
+    const next = trackedTokenIds.filter((id) => id !== fromId);
+    next.splice(Math.min(insertAt, next.length), 0, fromId);
+    reorderTokens(next);
+  };
+
+  const handleRowDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const insertBefore = e.clientY < rect.top + rect.height / 2;
+    let insertion = insertBefore ? index : index + 1;
+    // Rows below the dragged one move up a slot once it's removed.
+    if (draggedIndex !== -1 && draggedIndex < index) insertion -= 1;
+    setDragOverIndex(insertion);
+  };
+
+  /** Whether to draw the insertion line above the row at `index`. */
+  const showIndicatorAbove = (index: number, itemId: string) => {
+    if (dragOverIndex === null || draggedId.current === itemId) return false;
+    const renderIndex =
+      draggedIndex !== -1 && draggedIndex < index ? dragOverIndex + 1 : dragOverIndex;
+    return renderIndex === index;
+  };
+
+  const pinAll = () => {
+    const pinned = new Set(trackedTokenIds);
+    for (const item of items) {
+      const isToken =
+        (item.layer === "CHARACTER" || item.layer === "MOUNT") && item.type === "IMAGE";
+      if (isToken && !pinned.has(item.id)) trackToken(item.id);
+    }
+  };
 
   return (
     <div className={`${mode === "DARK" ? "dark" : ""} h-screen overflow-y-auto`}>
-      <div ref={divRef} className="flex flex-col gap-3 p-4">
-
-        {/* Header */}
+      <div ref={contentRef} className="flex flex-col gap-3 p-4">
         <h1 className="text-lg font-bold text-text-primary dark:text-text-primary-dark">
           TFE Trackers
         </h1>
 
-        <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
+        <hr className={dividerClass} />
 
-        {/* ── Tracked Tokens — shown for all roles ───────────────────── */}
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-            Tracked Tokens
-          </h2>
+          <h2 className={sectionHeadingClass}>Tracked Tokens</h2>
           {trackedItems.length > 0 && (
             <span className="text-xs text-text-disabled dark:text-text-disabled-dark">
               {trackedItems.length} pinned
@@ -166,33 +190,15 @@ export default function Action(): React.JSX.Element {
           )}
         </div>
 
-        {/* GM bulk pin/unpin controls */}
         {role === "GM" && (
           <div className="flex gap-2">
-            {/* Pin every untracked CHARACTER/MOUNT IMAGE token in the scene */}
-            <button
-              onClick={() => {
-                const pinnedSet = new Set(trackedTokenIds);
-                items
-                  .filter(
-                    (item) =>
-                      (item.layer === "CHARACTER" || item.layer === "MOUNT") &&
-                      item.type === "IMAGE" &&
-                      !pinnedSet.has(item.id),
-                  )
-                  .forEach((item) => trackToken(item.id));
-              }}
-              className="flex-1 rounded-md border border-white/10 bg-black/10 px-2 py-1 text-xs font-medium text-text-secondary hover:bg-black/20 hover:text-text-primary dark:bg-white/5 dark:text-text-secondary-dark dark:hover:bg-white/10 dark:hover:text-text-primary-dark"
-            >
+            <button onClick={pinAll} className={bulkButtonClass}>
               Pin All
             </button>
-            {/* Unpin every currently tracked token */}
             <button
-              onClick={() => {
-                [...trackedTokenIds].forEach((id) => untrackToken(id));
-              }}
+              onClick={() => trackedTokenIds.forEach(untrackToken)}
               disabled={trackedTokenIds.length === 0}
-              className="flex-1 rounded-md border border-white/10 bg-black/10 px-2 py-1 text-xs font-medium text-text-secondary hover:bg-black/20 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/5 dark:text-text-secondary-dark dark:hover:bg-white/10 dark:hover:text-text-primary-dark"
+              className={bulkButtonClass}
             >
               Unpin All
             </button>
@@ -200,27 +206,12 @@ export default function Action(): React.JSX.Element {
         )}
 
         {trackedItems.length > 0 ? (
-          // Outer wrapper catches dragover/drop that fall between rows or below
-          // the last row, so the insertion line and drop always resolve cleanly.
+          // The container also accepts drops in the gaps between rows.
           <div
             className="flex flex-col"
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              e.preventDefault();
-              const fromId = draggedId.current;
-              draggedId.current = null;
-              setDragOverIndex(null);
-              if (fromId === null || dragOverIndex === null) return;
-              const next = trackedTokenIds.filter((id) => id !== fromId);
-              // dragOverIndex is the insertion position in the pre-removal list;
-              // clamp to valid range after removal.
-              const insertAt = Math.min(dragOverIndex, next.length);
-              next.splice(insertAt, 0, fromId);
-              reorderTokens(next);
-            }}
+            onDrop={handleDrop}
             onDragLeave={(e) => {
-              // Only clear when the pointer leaves the entire list container,
-              // not when it moves between child elements.
               if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
                 setDragOverIndex(null);
               }
@@ -232,52 +223,19 @@ export default function Action(): React.JSX.Element {
                 draggable
                 onDragStart={(e) => {
                   draggedId.current = item.id;
-                  // Dim the row while it is being dragged.
-                  (e.currentTarget as HTMLDivElement).style.opacity = "0.4";
+                  e.currentTarget.style.opacity = "0.4";
                 }}
                 onDragEnd={(e) => {
-                  draggedId.current = null;
-                  setDragOverIndex(null);
-                  (e.currentTarget as HTMLDivElement).style.opacity = "";
+                  endDrag();
+                  e.currentTarget.style.opacity = "";
                 }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation(); // don't bubble to outer container handler
-                  // Determine insertion index from pointer position relative to
-                  // the midpoint of this row: top half → insert before, bottom
-                  // half → insert after.
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const insertBefore = e.clientY < rect.top + rect.height / 2;
-                  let insertion = insertBefore ? index : index + 1;
-                  // When dragging downward the dragged row still occupies a slot
-                  // above the target in the live list, shifting every row below
-                  // it up by one visual position. Subtract 1 to compensate so
-                  // the indicator lands where the user expects.
-                  const draggedIndex = draggedId.current
-                    ? trackedTokenIds.indexOf(draggedId.current)
-                    : -1;
-                  if (draggedIndex !== -1 && draggedIndex < index) {
-                    insertion -= 1;
-                  }
-                  setDragOverIndex(insertion);
-                }}
-                className="flex flex-col mb-2"
+                onDragOver={(e) => handleRowDragOver(e, index)}
+                className="mb-2 flex flex-col"
               >
-                {/* Insertion line above this row (insert-before indicator) */}
                 <div
-                  className={`mx-1 h-0.5 rounded-full transition-colors duration-75 ${(() => {
-                    if (dragOverIndex === null || draggedId.current === item.id) return "bg-transparent";
-                    // Translate dragOverIndex (post-removal space) back to
-                    // pre-removal space for rendering against the live row index.
-                    const draggedIndex = draggedId.current
-                      ? trackedTokenIds.indexOf(draggedId.current)
-                      : -1;
-                    const renderIndex =
-                      draggedIndex !== -1 && draggedIndex < index
-                        ? dragOverIndex + 1
-                        : dragOverIndex;
-                    return renderIndex === index ? "bg-white/50 mb-1" : "bg-transparent";
-                  })()}`}
+                  className={`mx-1 h-0.5 rounded-full transition-colors duration-75 ${
+                    showIndicatorAbove(index, item.id) ? "mb-1 bg-white/50" : "bg-transparent"
+                  }`}
                 />
                 <TrackedTokenRow
                   item={item}
@@ -285,7 +243,6 @@ export default function Action(): React.JSX.Element {
                 />
               </div>
             ))}
-            {/* Insertion line after the last row (append-to-end indicator) */}
             <div
               className={`mx-1 h-0.5 rounded-full transition-colors duration-75 ${
                 dragOverIndex === trackedItems.length && draggedId.current !== null
@@ -295,106 +252,79 @@ export default function Action(): React.JSX.Element {
             />
           </div>
         ) : (
-          <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
+          <p className={helpTextClass}>
             Right-click a token and choose{" "}
-            <span className="font-semibold">Pin to Action Panel</span> to
-            track it here.
+            <span className="font-semibold">Pin/Unpin to Action Panel</span> to track it here.
           </p>
         )}
 
-        <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
+        <hr className={dividerClass} />
 
-          {/* Per-token config reminder */}
-          <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-            Per-Token Configuration
-          </h2>
-          <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
-            Right-click a token and open the TFE Trackers menu to configure
-            that token's type, injury slots, strain, and conditions.
-          </p>
+        <h2 className={sectionHeadingClass}>Per-Token Configuration</h2>
+        <p className={helpTextClass}>
+          Right-click a token and open the TFE Trackers menu to configure that token&apos;s
+          type, injury slots, strain, and conditions.
+        </p>
 
-        {/* ── GM-only sections ───────────────────────────────────────── */}
         {role === "GM" && (
           <div className="flex flex-col gap-3">
-
-            <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
-
-            {/* ── Scene Display settings ────────────────────────────── */}
-            <h2 className="text-sm font-semibold text-text-primary dark:text-text-primary-dark">
-              Scene Display Settings
-            </h2>
-            <p className="text-xs text-text-secondary dark:text-text-secondary-dark">
-              Right-click a token and open the TFE Trackers menu to override the scene-level display settings for that token.
+            <hr className={dividerClass} />
+            <h2 className={sectionHeadingClass}>Scene Display Settings</h2>
+            <p className={helpTextClass}>
+              Right-click a token and open the TFE Trackers menu to override the scene-level
+              display settings for that token.
             </p>
             <div className="flex flex-col gap-2">
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Show Strain</span>
-                <Toggle
+                <Switch
                   checked={settings.showStrain}
                   onChange={() => setSettings({ showStrain: !settings.showStrain })}
                 />
               </div>
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Show Conditions &amp; Complications</span>
-                <Toggle
+                <Switch
                   checked={settings.showConditions}
                   onChange={() => setSettings({ showConditions: !settings.showConditions })}
                 />
               </div>
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Show Token Names</span>
-                <Toggle
+                <Switch
                   checked={settings.showName}
                   onChange={() => setSettings({ showName: !settings.showName })}
                 />
               </div>
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Injuries</span>
-                <div className={segmentedClass}>
-                  {(["all", "filled-only", "none"] as const).map((opt) => (
-                    <button
-                      key={opt}
-                      onClick={() => setSettings({ injuryDisplay: opt })}
-                      className={segmentClass(settings.injuryDisplay === opt)}
-                    >
-                      {opt === "all" ? "All" : opt === "filled-only" ? "Filled" : "None"}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  options={INJURY_OPTIONS}
+                  value={settings.injuryDisplay}
+                  onChange={(injuryDisplay) => setSettings({ injuryDisplay })}
+                />
               </div>
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Marker Size</span>
-                <div className={segmentedClass}>
-                  {sizeOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSettings({ markerScale: opt.value })}
-                      className={segmentClass(settings.markerScale === opt.value)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  options={SIZE_OPTIONS}
+                  value={settings.markerScale}
+                  onChange={(markerScale) => setSettings({ markerScale })}
+                />
               </div>
-              <div className={rowClass}>
+              <div className={settingRowClass}>
                 <span>Text Size</span>
-                <div className={segmentedClass}>
-                  {sizeOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setSettings({ textScale: opt.value })}
-                      className={segmentClass(settings.textScale === opt.value)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedControl
+                  options={SIZE_OPTIONS}
+                  value={settings.textScale}
+                  onChange={(textScale) => setSettings({ textScale })}
+                />
               </div>
             </div>
           </div>
         )}
 
-        <hr className="border-text-primary/10 dark:border-text-primary-dark/10" />
+        <hr className={dividerClass} />
         <a
           href="https://discord.gg/QVCEFhd7"
           target="_blank"

@@ -26,12 +26,8 @@ import {
   applyDataPatch,
 } from "../tokenRecordMutations";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 /** Shorthand: active CharacterData from a record. */
 const active = getActiveData;
-
-// ─── applyStrainCurrent ───────────────────────────────────────────────────────
 
 describe("applyStrainCurrent", () => {
   it("sets strainCurrent within [0, strainMax]", () => {
@@ -72,8 +68,6 @@ describe("applyStrainCurrent", () => {
     expect(after.other.strainCurrent).toBe(0); // other blob untouched
   });
 });
-
-// ─── applyStrainMax ───────────────────────────────────────────────────────────
 
 describe("applyStrainMax", () => {
   it("sets strainMax within [STRAIN_MIN, STRAIN_MAX]", () => {
@@ -117,8 +111,6 @@ describe("applyStrainMax", () => {
   });
 });
 
-// ─── applyCharacterType ───────────────────────────────────────────────────────
-
 describe("applyCharacterType", () => {
   it("switches activeType to 'other'", () => {
     const r = createDefaultTokenRecord();
@@ -133,7 +125,6 @@ describe("applyCharacterType", () => {
   it("does not mutate either CharacterData blob", () => {
     const r = createDefaultTokenRecord();
     const after = applyCharacterType(r, "other");
-    // Both blobs are the same references — no data was touched
     expect(after.survivor).toBe(r.survivor);
     expect(after.other).toBe(r.other);
   });
@@ -144,8 +135,6 @@ describe("applyCharacterType", () => {
     expect(r.activeType).toBe("survivor");
   });
 });
-
-// ─── applyAddCondition ────────────────────────────────────────────────────────
 
 describe("applyAddCondition", () => {
   it("appends a condition to the list", () => {
@@ -190,8 +179,6 @@ describe("applyAddCondition", () => {
   });
 });
 
-// ─── applyRemoveCondition ─────────────────────────────────────────────────────
-
 describe("applyRemoveCondition", () => {
   it("removes the condition at the specified index", () => {
     const r0 = applyAddCondition(createDefaultTokenRecord(), "Dazed");
@@ -218,8 +205,6 @@ describe("applyRemoveCondition", () => {
     expect(active(r).conditions).toEqual(["Dazed"]);
   });
 });
-
-// ─── applyUpdateSeriousInjury ─────────────────────────────────────────────────
 
 describe("applyUpdateSeriousInjury", () => {
   it("patches slot 0 without affecting slot 1", () => {
@@ -256,8 +241,6 @@ describe("applyUpdateSeriousInjury", () => {
     expect(active(r).seriousInjuries[0].description).toBe("");
   });
 });
-
-// ─── applyUpdateCriticalInjury / applyUpdateLethalInjury ─────────────────────
 
 describe("applyUpdateCriticalInjury", () => {
   it("patches the critical injury slot", () => {
@@ -296,8 +279,6 @@ describe("applyUpdateLethalInjury", () => {
     expect(active(after).criticalInjury.id).toBe(cId);
   });
 });
-
-// ─── applySetHasSerious / applySetSeriousCount / applySetHasCritical / applySetHasLethal ──
 
 describe("injury tier toggles", () => {
   it("applySetHasSerious(false) disables serious injuries", () => {
@@ -341,13 +322,9 @@ describe("injury tier toggles", () => {
   });
 });
 
-// ─── applyAdjustSeriousTier ───────────────────────────────────────────────────
-
 describe("applyAdjustSeriousTier", () => {
-  // Tier values: 0 = none, 1 = one slot, 2 = two slots
 
   it("increments from 0 to 1 (enables hasSerious, seriousCount = 1)", () => {
-    // Start with hasSerious = false (tier 0)
     const r = applySetHasSerious(createDefaultTokenRecord(), false);
     const after = applyAdjustSeriousTier(r, 1);
     expect(active(after).hasSerious).toBe(true);
@@ -365,7 +342,6 @@ describe("applyAdjustSeriousTier", () => {
   });
 
   it("decrements from 2 to 1 (seriousCount becomes 1)", () => {
-    // Default survivor has seriousCount = 2
     const r = createDefaultTokenRecord();
     const after = applyAdjustSeriousTier(r, -1);
     expect(active(after).hasSerious).toBe(true);
@@ -382,15 +358,13 @@ describe("applyAdjustSeriousTier", () => {
   });
 
   it("is a no-op when already at tier 0 and decrementing", () => {
-    // Caller should disable the button at this boundary, but the function
-    // must still be safe to call.
+    // The UI disables this button, but the function must still be safe.
     const r = applySetHasSerious(createDefaultTokenRecord(), false);
     const after = applyAdjustSeriousTier(r, -1);
     expect(active(after).hasSerious).toBe(false);
   });
 
   it("clamps at tier 2 when incrementing beyond the maximum", () => {
-    // Default survivor: hasSerious = true, seriousCount = 2 (already at tier 2)
     const r = createDefaultTokenRecord();
     const after = applyAdjustSeriousTier(r, 1);
     expect(active(after).hasSerious).toBe(true);
@@ -409,8 +383,6 @@ describe("applyAdjustSeriousTier", () => {
     expect(after.other.seriousCount).toBe(1); // other blob default unchanged
   });
 });
-
-// ─── applySetDisplayName ──────────────────────────────────────────────────────
 
 describe("applySetDisplayName", () => {
   it("sets the displayName on the record", () => {
@@ -447,8 +419,6 @@ describe("applySetDisplayName", () => {
   });
 });
 
-// ─── applyDataPatch ───────────────────────────────────────────────────────────
-
 describe("applyDataPatch", () => {
   it("applies an arbitrary partial patch to the active CharacterData", () => {
     const r = createDefaultTokenRecord();
@@ -477,14 +447,9 @@ describe("applyDataPatch", () => {
   });
 });
 
-// ─── Mutation helpers preserve pre-populated slot content ──────────────────────
-// These tests use createSurvivorData, createOtherData, and createInjurySlot to
-// build records with specific initial slot content, verifying that mutations
-// target only the intended field and leave everything else intact.
 
 describe("mutation helpers preserve pre-populated slot content", () => {
   it("applyUpdateSeriousInjury preserves existing complications when patching description", () => {
-    // Build a record whose slot 0 already has complications.
     const slot0 = { ...createInjurySlot(), description: "Arm", complications: ["Numb", "Weak"] };
     const slot1 = createInjurySlot();
     const survivor = { ...createSurvivorData(), seriousInjuries: [slot0, slot1] as [typeof slot0, typeof slot1] };
@@ -493,14 +458,12 @@ describe("mutation helpers preserve pre-populated slot content", () => {
     const after = applyUpdateSeriousInjury(r, 0, { treated: true });
     const result = active(after).seriousInjuries[0];
 
-    // Only treated changed; complications and description are untouched.
     expect(result.treated).toBe(true);
     expect(result.description).toBe("Arm");
     expect(result.complications).toEqual(["Numb", "Weak"]);
   });
 
   it("applyUpdateCriticalInjury preserves existing slot content on other blob", () => {
-    // Build an "other" record with a pre-filled critical slot.
     const criticalSlot = { ...createInjurySlot(), description: "Chest", complications: ["Winded"] };
     const other = { ...createOtherData(), hasCritical: true, criticalInjury: criticalSlot };
     const r = { ...createDefaultTokenRecord(), activeType: "other" as const, other };
@@ -521,27 +484,21 @@ describe("mutation helpers preserve pre-populated slot content", () => {
     const after = applyUpdateLethalInjury(r, { description: "Head wound" });
     const result = active(after).lethalInjury;
 
-    // description updated; treated still false.
     expect(result.description).toBe("Head wound");
     expect(result.treated).toBe(false);
   });
 
   it("applyStrainMax on other blob clamps its own strainCurrent independently", () => {
-    // Build an other blob with strainCurrent = 3.
     const other = { ...createOtherData(), strainMax: 5, strainCurrent: 3 };
     const r = { ...createDefaultTokenRecord(), activeType: "other" as const, other };
 
-    // Lower max to 2 — should clamp strainCurrent to 2.
     const after = applyStrainMax(r, 2);
     expect(active(after).strainMax).toBe(2);
     expect(active(after).strainCurrent).toBe(2);
-    // Survivor blob unaffected.
     expect(after.survivor.strainMax).toBe(3);
     expect(after.survivor.strainCurrent).toBe(0);
   });
 });
-
-// ─── Cross-blob isolation ─────────────────────────────────────────────────────
 
 describe("cross-blob isolation", () => {
   it("mutations on survivor blob do not affect other blob", () => {
@@ -553,7 +510,6 @@ describe("cross-blob isolation", () => {
       ),
       5,
     );
-    // other blob completely untouched
     expect(after.other.strainMax).toBe(1);
     expect(after.other.strainCurrent).toBe(0);
     expect(after.other.conditions).toEqual([]);

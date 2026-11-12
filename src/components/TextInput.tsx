@@ -2,11 +2,7 @@ import { useState } from "react";
 import PartiallyControlledInput from "./PartiallyControlledInput";
 import { cn } from "../lib/utils";
 
-/**
- * A single-line text input with an animated underline.
- * Confirms on blur/Enter, cancels on Escape.
- * Used for injury location and strain-max fields.
- */
+/** Single-line text input with an underline. Commits on blur or Enter; Escape cancels. */
 export default function TextInput({
   value,
   onConfirm,
@@ -33,7 +29,6 @@ export default function TextInput({
         onMouseEnter={() => setHasHover(true)}
         onMouseLeave={() => setHasHover(false)}
       />
-      {/* Animated underline */}
       <div className="flex min-h-[2px] flex-col justify-end">
         <div
           className={cn(

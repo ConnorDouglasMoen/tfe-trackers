@@ -3,6 +3,7 @@ import { InjurySlot } from "../characterDataHelpers";
 import TextInput from "./TextInput";
 import ToggleButton from "./ToggleButton";
 import { cn } from "../lib/utils";
+import { CloseIcon } from "./icons";
 
 const SEVERITY_COLORS = {
   serious:
@@ -27,12 +28,9 @@ function ClearButton({ onClick }: { onClick: () => void }): React.JSX.Element {
 }
 
 /**
- * A card representing one injury slot (Serious, Critical, or Lethal).
- *
- * - Description has a CLEAR button.
- * - Complications work like Conditions: Enter to add, X to delete each item.
- * - Treated toggle is disabled unless description or at least one complication is present.
- * - Clearing all content automatically resets Treated.
+ * One injury slot: a description, a list of complications, and a Treated
+ * toggle. Treated can only be set while the slot has content, and is reset
+ * when the slot is emptied.
  */
 export default function InjurySlotCard({
   slot,
@@ -64,7 +62,6 @@ export default function InjurySlotCard({
   const removeComplication = (index: number) => {
     const updated = slot.complications.filter((_, i) => i !== index);
     const patch: Partial<InjurySlot> = { complications: updated };
-    // Reset treated if description is also empty and no complications remain.
     if (updated.length === 0 && slot.description.trim() === "") patch.treated = false;
     onUpdate(patch);
   };
@@ -79,8 +76,6 @@ export default function InjurySlotCard({
 
   return (
     <div className={cn("flex flex-col gap-1.5 rounded-lg border p-2", SEVERITY_COLORS[severity])}>
-
-      {/* Header: label + Treated toggle */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-text-secondary dark:text-text-secondary-dark">
           {label}
@@ -95,7 +90,6 @@ export default function InjurySlotCard({
         </div>
       </div>
 
-      {/* Description row */}
       <div className="flex items-center">
         <TextInput
           value={slot.description}
@@ -108,7 +102,6 @@ export default function InjurySlotCard({
         )}
       </div>
 
-      {/* Complications — Enter to add, X to delete */}
       <div className="flex flex-col gap-1">
         <input
           type="text"
@@ -136,10 +129,7 @@ export default function InjurySlotCard({
                   aria-label={`Remove complication: ${comp}`}
                   className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
                 >
-                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-                    <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
+                  <CloseIcon size={12} />
                 </button>
               </li>
             ))}

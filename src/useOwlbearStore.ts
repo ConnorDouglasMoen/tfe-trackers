@@ -23,9 +23,9 @@ export const useOwlbearStore = create<OwlbearState>()((set) => ({
   selection: undefined,
   themeMode: "LIGHT",
 
-  setSceneReady: (sceneReady) => set((state) => ({ ...state, sceneReady })),
-  setItems: (items) => set((state) => ({ ...state, items })),
-  setRole: (role) => set((state) => ({ ...state, role })),
-  setSelection: (selection) => set((state) => ({ ...state, selection })),
-  setThemeMode: (themeMode) => set((state) => ({ ...state, themeMode })),
+  setSceneReady: (sceneReady) => set({ sceneReady }),
+  setItems: (items) => set({ items }),
+  setRole: (role) => set({ role }),
+  setSelection: (selection) => set({ selection }),
+  setThemeMode: (themeMode) => set({ themeMode }),
 }));

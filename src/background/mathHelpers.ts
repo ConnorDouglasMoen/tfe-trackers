@@ -1,5 +1,4 @@
-// Math helpers for tfe-trackers' on-map display.
-// Adapted from owl-trackers reference repo.
+// Adapted from Owl Trackers.
 
 import { Image, Math2 } from "@owlbear-rodeo/sdk";
 

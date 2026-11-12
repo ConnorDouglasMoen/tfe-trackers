@@ -1,9 +1,6 @@
 import { cn } from "../lib/utils";
 
-/**
- * A pill-shaped toggle switch.
- * Used for injury "Treated" checkboxes and the has* injury-type toggles.
- */
+/** A labeled on/off switch backed by a checkbox. */
 export default function ToggleButton({
   isChecked,
   onChange,
@@ -34,9 +31,7 @@ export default function ToggleButton({
           onChange={() => onChange(!isChecked)}
           className="peer sr-only"
         />
-        {/* Track */}
         <div className="h-[22px] w-[38px] rounded-full bg-black/30 p-0.5 transition duration-150 peer-checked:bg-[#74649f] dark:bg-white/20 dark:peer-checked:bg-[#74649f]" />
-        {/* Thumb */}
         <div className="absolute left-[3px] top-[3px] size-4 rounded-full bg-white/80 transition duration-150 peer-checked:translate-x-[16px] peer-checked:bg-[#ccb3ff]" />
       </div>
     </label>

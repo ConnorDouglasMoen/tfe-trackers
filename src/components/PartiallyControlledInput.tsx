@@ -1,12 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-/**
- * An input that is "partially controlled": the displayed value tracks the
- * parent's value reactively, but edits are local until the user confirms
- * (blur or Enter) or cancels (Escape).
- *
- * Mirrors the pattern from owl-trackers for numeric tracker inputs.
- */
 interface PartiallyControlledInputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
   parentValue: string;
@@ -14,39 +7,41 @@ interface PartiallyControlledInputProps
   clearContentOnFocus?: boolean;
 }
 
+/**
+ * An input that shows `parentValue` but keeps edits local until the user
+ * confirms them (blur or Enter) or cancels them (Escape). If `parentValue`
+ * changes, for example because someone else edited the token, the input
+ * follows it.
+ */
 export default function PartiallyControlledInput({
   parentValue,
   onUserConfirm,
-  className,
   clearContentOnFocus = false,
   ...inputProps
 }: PartiallyControlledInputProps): React.JSX.Element {
   const [inputContent, setInputContent] = useState(parentValue);
-
-  // Sync display value when parent changes (e.g. another player edits the token).
-  const [updateFlag, setUpdateFlag] = useState(false);
-  if (updateFlag) {
+  const [lastParentValue, setLastParentValue] = useState(parentValue);
+  if (parentValue !== lastParentValue) {
+    setLastParentValue(parentValue);
     setInputContent(parentValue);
-    setUpdateFlag(false);
   }
-  useEffect(() => setUpdateFlag(true), [parentValue]);
 
   const resetContent = () => setInputContent(parentValue);
 
+  // Enter and Escape blur the input themselves; the resulting blur event
+  // must not confirm a second time.
   let ignoreBlur = false;
-  const blurWithoutUpdate = (
-    e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>,
-  ) => {
+  const blurWithoutConfirm = (target: HTMLInputElement) => {
     ignoreBlur = true;
-    (e.target as HTMLInputElement).blur();
+    target.blur();
     ignoreBlur = false;
   };
 
-  const runConfirm = (
-    e: React.FocusEvent<HTMLInputElement> | React.KeyboardEvent<HTMLInputElement>,
-  ) => {
-    onUserConfirm(e.target as HTMLInputElement);
-    setUpdateFlag(true);
+  const confirm = (target: HTMLInputElement) => {
+    onUserConfirm(target);
+    // Show the parent's value again. If the parent accepted the edit, the new
+    // value arrives through `parentValue` on the next render.
+    resetContent();
   };
 
   return (
@@ -59,18 +54,18 @@ export default function PartiallyControlledInput({
       }}
       onBlur={(e) => {
         inputProps.onBlur?.(e);
-        if (!ignoreBlur) {
-          if (clearContentOnFocus && inputContent === "") resetContent();
-          else runConfirm(e);
-        }
+        if (ignoreBlur) return;
+        if (clearContentOnFocus && inputContent === "") resetContent();
+        else confirm(e.target);
       }}
       onKeyDown={(e) => {
         inputProps.onKeyDown?.(e);
+        const target = e.target as HTMLInputElement;
         if (e.key === "Enter") {
-          blurWithoutUpdate(e);
-          runConfirm(e);
+          blurWithoutConfirm(target);
+          confirm(target);
         } else if (e.key === "Escape") {
-          blurWithoutUpdate(e);
+          blurWithoutConfirm(target);
           resetContent();
         }
       }}
@@ -78,7 +73,6 @@ export default function PartiallyControlledInput({
         inputProps.onFocus?.(e);
         if (clearContentOnFocus) setInputContent("");
       }}
-      className={className}
       autoComplete="off"
       spellCheck="false"
     />

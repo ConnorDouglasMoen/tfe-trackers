@@ -2,285 +2,212 @@ import OBR, { Image, Item, Metadata, isImage } from "@owlbear-rodeo/sdk";
 import { getPluginId } from "../getPluginId";
 import {
   TOKEN_RECORD_METADATA_ID,
+  SCENE_DISPLAY_METADATA_ID,
   DisplaySettings,
   DEFAULT_DISPLAY_SETTINGS,
+  getActiveData,
+  parseDisplaySettings,
   resolveDisplaySettings,
 } from "../characterDataHelpers";
-import { SCENE_DISPLAY_METADATA_ID } from "../useSceneDisplayStore";
-import { getActiveDataFromItem, getTokenRecordFromItem } from "../itemMetadataHelpers";
+import { getTokenRecordFromItem } from "../itemMetadataHelpers";
 import { getAllAttachmentIds } from "./onMapItemIds";
-import { buildStrainItems, buildInjuryItems, buildConditionItems, buildNameBubble } from "./onMapHelpers";
+import {
+  buildStrainItems,
+  buildInjuryItems,
+  buildConditionItems,
+  buildNameBubble,
+} from "./onMapHelpers";
 
-let itemsLast: Image[] = [];
-let sceneListenersSet = false;
-let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
-let sceneDpi = 150;
+const TOKEN_RECORD_KEY = getPluginId(TOKEN_RECORD_METADATA_ID);
 
-// Serialized snapshot of the last-known display settings used to detect
-// no-op scene metadata changes (other plugins writing unrelated metadata
-// should not trigger a full TFE redraw).
-let displaySettingsJson = JSON.stringify(DEFAULT_DISPLAY_SETTINGS);
-
-// Debounce handle for item-change redraws. Rapid consecutive onChange events
-// (e.g. dragging a token) collapse into a single redraw fired after the delay.
-let itemChangeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+/** Collapses bursts of item changes (e.g. dragging a token) into one redraw. */
 const ITEM_CHANGE_DEBOUNCE_MS = 150;
 
-// Fonts (e.g. Roboto) may not be loaded when OBR first fires onReadyChange,
-// causing Unicode symbols to fall back to a system font and render incorrectly.
-// A delayed second refresh (matching the owl-trackers reference approach)
-// corrects any mis-rendered glyphs once fonts have had time to load.
-let extraRefreshDone = false;
-const EXTRA_REFRESH_DELAY = 1000;
+/**
+ * Glyphs drawn before Roboto finishes loading fall back to a system font, so
+ * the first scene load gets one extra redraw after this delay.
+ */
+const FONT_REFRESH_DELAY_MS = 1000;
+
+const BATCH_SIZE = 100;
+
+let itemsLast: Image[] = [];
+let displaySettings: DisplaySettings = { ...DEFAULT_DISPLAY_SETTINGS };
+let displaySettingsJson = JSON.stringify(displaySettings);
+let sceneDpi = 150;
+
+let unsubscribeItems: (() => void) | null = null;
+let itemChangeTimer: ReturnType<typeof setTimeout> | null = null;
+let fontRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let fontRefreshDone = false;
 
 /**
- * Incremented each time refreshAll starts. Checked after each await so that
- * a scene not-ready transition mid-refresh causes the stale run to abort
- * instead of adding items to a scene that just wiped local state.
+ * Bumped at the start of every full refresh. A refresh that sees a newer
+ * generation after an await stops, so it can't draw into a scene that closed
+ * or was redrawn in the meantime.
  */
 let refreshGeneration = 0;
 
-function readDisplaySettings(meta: Metadata): DisplaySettings {
-  const raw = meta[getPluginId(SCENE_DISPLAY_METADATA_ID)];
-  if (raw !== null && typeof raw === "object") {
-    return { ...DEFAULT_DISPLAY_SETTINGS, ...(raw as Partial<DisplaySettings>) };
-  }
-  return { ...DEFAULT_DISPLAY_SETTINGS };
+function isTokenImage(item: Item): item is Image {
+  return (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item);
 }
 
-/**
- * Returns true if `items` contains at least one TFE-relevant item: either a
- * CHARACTER/MOUNT image token with TFE metadata, or a TFE local attachment
- * (identified by the "-tfe-" substring in its ID). This guards the
- * items.onChange handler from triggering redraws when unrelated tokens
- * (plain images, drawings, rulers, etc.) are the only things that changed.
- */
-function hasTfeRelevantItems(items: Item[]): boolean {
+/** True if any item is a tracked token or one of our attachments. */
+function hasRelevantItems(items: Item[]): boolean {
   return items.some(
     (item) =>
-      item.id.includes("-tfe-") ||
-      ((item.layer === "CHARACTER" || item.layer === "MOUNT") &&
-        isImage(item) &&
-        getPluginId(TOKEN_RECORD_METADATA_ID) in item.metadata),
+      item.id.includes("-tfe-") || (isTokenImage(item) && TOKEN_RECORD_KEY in item.metadata),
   );
 }
 
-let extraRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+/** Update the cached settings. Returns false if nothing changed. */
+function applySceneMetadata(meta: Metadata): boolean {
+  const next = parseDisplaySettings(meta[getPluginId(SCENE_DISPLAY_METADATA_ID)]);
+  const nextJson = JSON.stringify(next);
+  if (nextJson === displaySettingsJson) return false;
+  displaySettings = next;
+  displaySettingsJson = nextJson;
+  return true;
+}
 
 export function initOnMapDisplay(): () => void {
-  // Wire up the ready-change listener first — before any awaits — so we never
-  // miss a ready event due to async yielding. Everything else is triggered from
-  // here rather than relying on a post-await isReady() check, which has a
-  // window where the ready event fires between the call and the check.
-  OBR.scene.onReadyChange(async (isReady) => {
-    if (isReady) {
-      // Read metadata fresh on each scene-ready so display settings are always
-      // current (the previous getMetadata call happened before ready, potentially
-      // returning empty/stale data).
-      const meta = await OBR.scene.getMetadata();
-      displaySettings = readDisplaySettings(meta);
-      await refreshAll();
-      startListeners();
-      extraRefreshTimer = setTimeout(() => {
-        extraRefreshTimer = null;
-        if (!extraRefreshDone) void refreshAll();
-        extraRefreshDone = true;
-      }, EXTRA_REFRESH_DELAY);
-    }
+  // Subscribe before the first await so a ready event can't slip past us.
+  const unsubscribeReady = OBR.scene.onReadyChange((isReady) => {
+    if (isReady) void handleSceneReady();
+    else handleSceneClosed();
   });
 
-  // Respond to scene-level display setting changes (GM Action panel updates).
-  // Early-exit when TFE's own display settings haven't actually changed — this
-  // prevents full redraws when other plugins write unrelated scene metadata.
-  OBR.scene.onMetadataChange((meta) => {
-    const next = readDisplaySettings(meta);
-    const nextJson = JSON.stringify(next);
-    if (nextJson === displaySettingsJson) return;
-    displaySettings = next;
-    displaySettingsJson = nextJson;
-    void refreshAll();
+  const unsubscribeMetadata = OBR.scene.onMetadataChange((meta) => {
+    // Other extensions write scene metadata too; only redraw for our settings.
+    if (applySceneMetadata(meta)) void refreshAll();
   });
 
-  // Also handle the case where the scene is already ready when the background
-  // script loads (e.g. extension reload without page refresh).
-  void (async () => {
-    const isReady = await OBR.scene.isReady();
-    if (isReady) {
-      const meta = await OBR.scene.getMetadata();
-      displaySettings = readDisplaySettings(meta);
-      await refreshAll();
-      startListeners();
-      extraRefreshTimer = setTimeout(() => {
-        extraRefreshTimer = null;
-        if (!extraRefreshDone) void refreshAll();
-        extraRefreshDone = true;
-      }, EXTRA_REFRESH_DELAY);
-    }
-  })();
+  // The scene may already be open, e.g. when the extension is reloaded.
+  void OBR.scene.isReady().then((isReady) => {
+    if (isReady) void handleSceneReady();
+  });
 
   return () => {
-    if (extraRefreshTimer !== null) {
-      clearTimeout(extraRefreshTimer);
-      extraRefreshTimer = null;
-    }
+    unsubscribeReady();
+    unsubscribeMetadata();
+    unsubscribeItems?.();
+    unsubscribeItems = null;
+    clearTimer(itemChangeTimer);
+    clearTimer(fontRefreshTimer);
+    itemChangeTimer = null;
+    fontRefreshTimer = null;
   };
 }
 
+function clearTimer(timer: ReturnType<typeof setTimeout> | null) {
+  if (timer !== null) clearTimeout(timer);
+}
+
+async function handleSceneReady() {
+  // Settings may have changed while no scene was open.
+  applySceneMetadata(await OBR.scene.getMetadata());
+  await refreshAll();
+  subscribeToItems();
+
+  if (!fontRefreshDone && fontRefreshTimer === null) {
+    fontRefreshTimer = setTimeout(() => {
+      fontRefreshTimer = null;
+      fontRefreshDone = true;
+      void refreshAll();
+    }, FONT_REFRESH_DELAY_MS);
+  }
+}
+
+function handleSceneClosed() {
+  refreshGeneration++;
+  unsubscribeItems?.();
+  unsubscribeItems = null;
+  clearTimer(itemChangeTimer);
+  itemChangeTimer = null;
+}
+
+function subscribeToItems() {
+  if (unsubscribeItems !== null) return;
+
+  unsubscribeItems = OBR.scene.items.onChange((allItems) => {
+    if (!hasRelevantItems(allItems)) return;
+
+    clearTimer(itemChangeTimer);
+    itemChangeTimer = setTimeout(() => {
+      itemChangeTimer = null;
+      const images = allItems.filter(isTokenImage);
+      const changed = getChangedItems(images);
+      itemsLast = images;
+      if (changed.length > 0) void redraw(changed);
+    }, ITEM_CHANGE_DEBOUNCE_MS);
+  });
+}
+
 async function refreshAll() {
-  // Claim this generation; any concurrent or prior refreshAll calls with a
-  // lower generation will bail out after their next await, preventing a race
-  // where deleteItems succeeds but batchAdd runs against a stale/gone scene.
   const generation = ++refreshGeneration;
 
   sceneDpi = await OBR.scene.grid.getDpi();
   if (generation !== refreshGeneration) return;
 
-  const items: Image[] = await OBR.scene.items.getItems(
-    (item) => (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
-  );
+  const items = await OBR.scene.items.getItems(isTokenImage);
   if (generation !== refreshGeneration) return;
   itemsLast = items;
 
+  await redraw(items, () => generation === refreshGeneration);
+}
+
+/** Delete and rebuild the attachments for the given tokens. */
+async function redraw(images: Image[], isCurrent: () => boolean = () => true) {
   const addItems: Item[] = [];
   const deleteIds: string[] = [];
-  for (const item of items) updateItem(item, addItems, deleteIds);
+  for (const image of images) {
+    deleteIds.push(...getAllAttachmentIds(image.id));
+    buildAttachments(image, addItems);
+  }
 
   if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
-  if (generation !== refreshGeneration) return;
-  await batchAdd(addItems);
+  if (!isCurrent()) return;
+  for (let i = 0; i < addItems.length; i += BATCH_SIZE) {
+    await OBR.scene.local.addItems(addItems.slice(i, i + BATCH_SIZE));
+  }
 }
 
-function startListeners() {
-  if (sceneListenersSet) return;
-  sceneListenersSet = true;
+function buildAttachments(image: Image, addItems: Item[]) {
+  if (image.metadata[TOKEN_RECORD_KEY] === undefined) return;
 
-  const unsubItems = OBR.scene.items.onChange((allItems) => {
-    // Skip entirely if no TFE-relevant items are in the changed set — this
-    // avoids redraws when only unrelated scene items (props, drawings, etc.)
-    // were modified.
-    if (!hasTfeRelevantItems(allItems)) return;
-
-    // Debounce: cancel any pending redraw and schedule a fresh one. This
-    // collapses rapid successive fires (e.g. token drag) into a single redraw.
-    if (itemChangeDebounceTimer !== null) clearTimeout(itemChangeDebounceTimer);
-    itemChangeDebounceTimer = setTimeout(async () => {
-      itemChangeDebounceTimer = null;
-
-      const images: Image[] = allItems.filter(
-        (item): item is Image =>
-          (item.layer === "CHARACTER" || item.layer === "MOUNT") && isImage(item),
-      );
-      const changed = getChangedItems(images);
-      itemsLast = images;
-      if (changed.length === 0) return;
-
-      const addItems: Item[] = [];
-      const deleteIds: string[] = [];
-      for (const item of changed) updateItem(item, addItems, deleteIds);
-
-      if (deleteIds.length > 0) await OBR.scene.local.deleteItems(deleteIds);
-      await batchAdd(addItems);
-    }, ITEM_CHANGE_DEBOUNCE_MS);
-  });
-
-  OBR.scene.onReadyChange((isReady) => {
-    if (!isReady) {
-      // Scene went away — tear down item listener and allow re-init.
-      unsubItems();
-      sceneListenersSet = false;
-    } else {
-      // Scene became ready again (e.g. after a mid-load not-ready blip).
-      // Re-run a full refresh and restart listeners so nothing is missed.
-      void refreshAll();
-      startListeners();
-    }
-  });
-}
-
-function updateItem(image: Image, addItems: Item[], deleteIds: string[]) {
-  deleteIds.push(...getAllAttachmentIds(image.id));
-
-  const raw = image.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)];
-  if (raw === undefined) return;
-
-  const data = getActiveDataFromItem(image);
-
-  // Resolve effective display settings: token overrides take precedence over scene defaults.
   const record = getTokenRecordFromItem(image);
-  const effectiveSettings = resolveDisplaySettings(displaySettings, record.displayOverrides);
-  const { showStrain, showConditions, injuryDisplay } = effectiveSettings;
+  const data = getActiveData(record);
+  const settings = resolveDisplaySettings(displaySettings, record.displayOverrides);
 
-  if (showStrain) {
-    buildStrainItems(image, sceneDpi, data, effectiveSettings, addItems);
+  if (settings.showStrain) {
+    buildStrainItems(image, sceneDpi, data, settings, addItems);
   }
-
-  // Injury circles — skipped entirely when injuryDisplay is "none".
-  if (injuryDisplay !== "none") {
-    buildInjuryItems(
-      image, sceneDpi, data, effectiveSettings,
-      addItems,
-    );
+  if (settings.injuryDisplay !== "none") {
+    buildInjuryItems(image, sceneDpi, data, settings, addItems);
   }
-
-  // Text bubbles — both complications and conditions are gated by showConditions.
-  const hasUntreatedComplications = showConditions && [
-    ...data.seriousInjuries,
-    data.criticalInjury,
-    data.lethalInjury,
-  ].some((s) => !s.treated && s.complications.length > 0);
-
-  const hasConditions = showConditions && data.conditions.length > 0;
-
-  if (hasUntreatedComplications || hasConditions) {
-    buildConditionItems(
-      image, sceneDpi, data,
-      effectiveSettings,
-      addItems,
-      showConditions,
-    );
+  // showConditions hides complication bubbles as well as condition bubbles.
+  if (settings.showConditions) {
+    buildConditionItems(image, sceneDpi, data, settings, addItems, true);
   }
-
-  // Name bubble — gated by resolved showName setting.
-  if (record.displayName !== "" && effectiveSettings.showName) {
-    buildNameBubble(image, sceneDpi, record.displayName, effectiveSettings, addItems);
+  if (settings.showName && record.displayName !== "") {
+    buildNameBubble(image, sceneDpi, record.displayName, settings, addItems);
   }
 }
 
-/**
- * Returns items that are new or have changed position, scale, visibility, or
- * token metadata since the last snapshot. Uses a Map keyed by item ID so
- * order differences between itemsLast and the current list don't cause items
- * to be silently skipped (the previous index-walk algorithm could mis-skip
- * tokens when the array order shifted, leaving attachments deleted but never
- * rebuilt).
- */
+/** Tokens that are new, or whose position, scale, visibility, or record changed. */
 function getChangedItems(current: Image[]): Image[] {
-  const lastById = new Map<string, Image>(itemsLast.map((img) => [img.id, img]));
-  const changed: Image[] = [];
-  for (const cur of current) {
+  const lastById = new Map(itemsLast.map((img) => [img.id, img]));
+  return current.filter((cur) => {
     const last = lastById.get(cur.id);
-    if (
+    return (
       last === undefined ||
       last.scale.x !== cur.scale.x ||
       last.scale.y !== cur.scale.y ||
       last.position.x !== cur.position.x ||
       last.position.y !== cur.position.y ||
       last.visible !== cur.visible ||
-      JSON.stringify(last.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)]) !==
-        JSON.stringify(cur.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)])
-    ) {
-      changed.push(cur);
-    }
-  }
-  return changed;
-}
-
-const BATCH_SIZE = 100;
-async function batchAdd(items: Item[]) {
-  if (items.length === 0) return;
-  for (let i = 0; i < Math.ceil(items.length / BATCH_SIZE); i++) {
-    await OBR.scene.local.addItems(
-      items.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE),
+      JSON.stringify(last.metadata[TOKEN_RECORD_KEY]) !==
+        JSON.stringify(cur.metadata[TOKEN_RECORD_KEY])
     );
-  }
+  });
 }

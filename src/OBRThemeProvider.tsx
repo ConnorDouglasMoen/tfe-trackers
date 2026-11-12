@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { getTheme } from "./getTheme";
 
 /**
- * Provides a MUI ThemeProvider whose palette stays in sync with the OBR theme.
- * Use for entry points where the initial theme is fetched async (e.g. action).
- * Avoid for popovers — it causes a flash on open.
+ * MUI theme provider that follows the OBR theme. It starts with the default
+ * theme until OBR responds, so pages that open as popovers should fetch the
+ * theme before rendering instead to avoid a flash.
  */
 export function OBRThemeProvider({ children }: { children?: React.ReactNode }) {
   const [theme, setTheme] = useState<MuiTheme>(() => getTheme());

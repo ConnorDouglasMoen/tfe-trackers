@@ -1,12 +1,7 @@
-/**
- * Global test setup for Vitest.
- * - Clears localStorage between tests.
- * - Mocks the OBR SDK so tests don't need a real OBR environment.
- */
 import { afterEach, vi } from "vitest";
 import "@testing-library/jest-dom";
 
-// Mock localStorage for environments/Node versions where it might be missing or conflicting.
+// Node's built-in localStorage is disabled (--no-webstorage), so provide one.
 class LocalStorageMock {
   private store: Record<string, string> = {};
 
@@ -58,13 +53,11 @@ if (typeof document !== "undefined") {
   };
 }
 
-// Clear localStorage after every test to prevent state leakage.
 afterEach(() => {
   localStorage.clear();
 });
 
-// Mock the entire OBR SDK. Individual tests can override specific methods
-// with vi.mocked(OBR.player.onChange).mockImplementation(...).
+// Tests override individual methods with vi.mocked(...).
 vi.mock("@owlbear-rodeo/sdk", () => {
   class MockBuilder {
     private data: any = {};

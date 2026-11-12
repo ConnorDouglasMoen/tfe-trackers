@@ -1,20 +1,10 @@
 // @vitest-environment jsdom
-/**
- * Tests for useSceneDisplayStore.
- *
- * Covers:
- *  - Initial state matches DEFAULT_DISPLAY_SETTINGS.
- *  - setSettings patches individual fields and writes to OBR scene metadata.
- *  - init() reads current scene metadata and applies defaults for missing fields.
- *  - init() wires OBR.scene.onMetadataChange to keep settings reactive.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import OBR from "@owlbear-rodeo/sdk";
-import { useSceneDisplayStore, SCENE_DISPLAY_METADATA_ID } from "../useSceneDisplayStore";
-import { DEFAULT_DISPLAY_SETTINGS } from "../characterDataHelpers";
+import { useSceneDisplayStore } from "../useSceneDisplayStore";
+import { DEFAULT_DISPLAY_SETTINGS, SCENE_DISPLAY_METADATA_ID } from "../characterDataHelpers";
 import { getPluginId } from "../getPluginId";
 
-/** Reset store to default state before each test. */
 function resetStore() {
   useSceneDisplayStore.setState({ settings: { ...DEFAULT_DISPLAY_SETTINGS } });
 }
@@ -24,16 +14,12 @@ beforeEach(() => {
   resetStore();
 });
 
-// ─── Initial state ─────────────────────────────────────────────────────────────
-
 describe("initial state", () => {
   it("matches DEFAULT_DISPLAY_SETTINGS", () => {
     const state = useSceneDisplayStore.getState();
     expect(state.settings).toEqual(DEFAULT_DISPLAY_SETTINGS);
   });
 });
-
-// ─── setSettings ───────────────────────────────────────────────────────────────
 
 describe("setSettings", () => {
   it("patches a single boolean field", () => {
@@ -103,8 +89,6 @@ describe("setSettings", () => {
   });
 });
 
-// ─── init() ────────────────────────────────────────────────────────────────────
-
 describe("init", () => {
   it("reads current scene metadata on init and applies it", async () => {
     const mockSettings = {
@@ -122,7 +106,6 @@ describe("init", () => {
 
     useSceneDisplayStore.getState().init();
 
-    // Allow the promise to resolve
     await vi.waitFor(() => {
       const s = useSceneDisplayStore.getState().settings;
       expect(s.showStrain).toBe(false);
@@ -136,8 +119,6 @@ describe("init", () => {
   });
 
   it("merges defaults for missing fields in scene metadata", async () => {
-    // Metadata only specifies showStrain=false; other fields should fall back
-    // to DEFAULT_DISPLAY_SETTINGS.
     vi.mocked(OBR.scene.getMetadata).mockResolvedValue({
       [getPluginId(SCENE_DISPLAY_METADATA_ID)]: { showStrain: false },
     });
@@ -161,7 +142,6 @@ describe("init", () => {
 
     await new Promise((r) => setTimeout(r, 0)); // flush microtasks
 
-    // State unchanged from defaults
     expect(useSceneDisplayStore.getState().settings).toEqual(DEFAULT_DISPLAY_SETTINGS);
   });
 
@@ -194,7 +174,6 @@ describe("init", () => {
 
     expect(capturedCallback).toBeDefined();
 
-    // Simulate a metadata change event from another participant
     capturedCallback!({
       [getPluginId(SCENE_DISPLAY_METADATA_ID)]: {
         ...DEFAULT_DISPLAY_SETTINGS,
@@ -216,7 +195,6 @@ describe("init", () => {
       return () => {};
     });
 
-    // Set a known non-default state first
     useSceneDisplayStore.setState({
       settings: { ...DEFAULT_DISPLAY_SETTINGS, showStrain: false },
     });
@@ -225,7 +203,6 @@ describe("init", () => {
 
     capturedCallback!({});  // no display settings key
 
-    // State should be unchanged from what we set
     expect(useSceneDisplayStore.getState().settings.showStrain).toBe(false);
   });
 });

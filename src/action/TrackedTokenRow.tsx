@@ -1,30 +1,6 @@
-/**
- * TrackedTokenRow
- *
- * A collapsible row in the Action panel's Tracked Tokens list.
- *
- * Manages its own local TokenRecord state and writes changes directly to the
- * OBR item by ID (not via selection), so the GM can edit any token without
- * needing to select it first.
- *
- * All record mutations are delegated to pure helpers in tokenRecordMutations.ts
- * so the logic stays consistent with TokenMenu and is tested independently.
- *
- * Shared editor content (type toggle, strain, injuries, conditions) is
- * rendered via TokenEditor. This wrapper retains:
- *   - Collapsible row chrome (header, chevron, center/unpin buttons)
- *   - Inline name editing in the header row (TokenMenu uses a dedicated
- *     Name section instead)
- *   - applyMutation pattern for writing by item ID
- */
-
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import OBR, { Item } from "@owlbear-rodeo/sdk";
-import {
-  TokenRecord,
-  CharacterData,
-  getActiveData,
-} from "../characterDataHelpers";
+import { TokenRecord, getActiveData } from "../characterDataHelpers";
 import {
   applyStrainCurrent,
   applyStrainMax,
@@ -42,22 +18,42 @@ import {
 import { getTokenRecordFromItem, writeTokenRecordToItem } from "../itemMetadataHelpers";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
 import { TokenEditor } from "../components/TokenEditor";
+import {
+  CheckIcon,
+  ChevronIcon,
+  CloseIcon,
+  CrosshairIcon,
+  DragHandleIcon,
+  PencilIcon,
+} from "../components/icons";
 
-// ─── Main row component ──────────────────────────────────────────────────────
+const iconButtonClass =
+  "shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark";
+
+/** Center the viewport on a point without changing the zoom level. */
+async function centerViewportOn(point: { x: number; y: number }) {
+  const [scale, width, height] = await Promise.all([
+    OBR.viewport.getScale(),
+    OBR.viewport.getWidth(),
+    OBR.viewport.getHeight(),
+  ]);
+  // Screen position = world position * scale + viewport position.
+  await OBR.viewport.animateTo({
+    position: { x: width / 2 - point.x * scale, y: height / 2 - point.y * scale },
+    scale,
+  });
+}
 
 /**
- * A collapsible row in the Action panel's Tracked Tokens list.
- *
- * The row header contains inline name editing, a center-on-token button, and
- * an unpin button. The expanded body delegates to TokenEditor for all shared
- * character editing UI.
+ * A collapsible row in the Action panel's tracked-token list. Edits are written
+ * straight to this token, so the GM can update any token without selecting it.
  */
 export function TrackedTokenRow({
   item,
   displayName,
 }: {
   item: Item;
-  /** Pre-computed display name with optional numeric suffix for deduplication. */
+  /** Name to show, already de-duplicated against the other rows. */
   displayName: string;
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false);
@@ -69,12 +65,11 @@ export function TrackedTokenRow({
   );
   const untrackToken = useTrackedTokensStore((state) => state.untrackToken);
 
-  // Keep local record in sync when the underlying OBR item changes externally.
+  // Pick up edits made elsewhere, e.g. by a player in the token menu.
   useEffect(() => {
     setRecord(getTokenRecordFromItem(item));
   }, [item]);
 
-  // Focus the name input whenever edit mode is entered.
   useEffect(() => {
     if (isEditingName) {
       nameInputRef.current?.focus();
@@ -82,35 +77,21 @@ export function TrackedTokenRow({
     }
   }, [isEditingName]);
 
-  // Derive active CharacterData from the record.
-  const data: CharacterData = getActiveData(record);
+  const data = getActiveData(record);
 
-  /**
-   * Apply a mutation function to the current record, persist to OBR, and
-   * update local state. All mutations in this row flow through this function.
-   *
-   * The mutation function receives the current record and returns the new
-   * record — matching the signature of all helpers in tokenRecordMutations.ts.
-   */
-  const applyMutation = useCallback(
-    (mutate: (r: TokenRecord) => TokenRecord) => {
-      setRecord((prev) => {
-        const updated = mutate(prev);
-        void writeTokenRecordToItem(item.id, updated);
-        return updated;
-      });
-    },
-    [item.id],
-  );
+  const applyMutation = (mutate: (r: TokenRecord) => TokenRecord) => {
+    const updated = mutate(record);
+    setRecord(updated);
+    void writeTokenRecordToItem(item.id, updated);
+  };
 
-  /** Enter name-edit mode, pre-filling with the current displayName or item name. */
   const startEditingName = (e: React.MouseEvent) => {
     e.stopPropagation();
     setNameInput(record.displayName || item.name);
     setIsEditingName(true);
   };
 
-  /** Commit the edited name — empty or matching item name clears displayName. */
+  // Typing the item's own name back in clears the custom name.
   const commitName = () => {
     const trimmed = nameInput.trim();
     applyMutation((r) =>
@@ -121,41 +102,10 @@ export function TrackedTokenRow({
 
   const cancelEditName = () => setIsEditingName(false);
 
-  // ── Viewport helper ───────────────────────────────────────────────────────
-
-  /**
-   * Animate the viewport to center on this token at the current zoom level.
-   *
-   * OBR viewport transform: screen = world * scale + position
-   * To place world point P at screen center (w/2, h/2):
-   *   position.x = w/2 - P.x * scale
-   *   position.y = h/2 - P.y * scale
-   */
-  const handleCenterOnToken = async () => {
-    const [scale, width, height] = await Promise.all([
-      OBR.viewport.getScale(),
-      OBR.viewport.getWidth(),
-      OBR.viewport.getHeight(),
-    ]);
-    const pos = item.position;
-    await OBR.viewport.animateTo({
-      position: {
-        x: width / 2 - pos.x * scale,
-        y: height / 2 - pos.y * scale,
-      },
-      scale,
-    });
-  };
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="rounded-lg border border-white/10 bg-black/5 dark:bg-white/5">
-      {/* ── Row header: collapse toggle / name edit + center + unpin ── */}
       <div className="flex items-center gap-1 px-2 py-1.5">
-
         {isEditingName ? (
-          /* ── Name edit mode ── */
           <>
             <input
               ref={nameInputRef}
@@ -169,122 +119,74 @@ export function TrackedTokenRow({
               className="min-w-0 flex-1 rounded bg-black/20 px-1.5 py-0.5 text-sm font-semibold text-text-primary outline-none dark:bg-white/10 dark:text-text-primary-dark"
               aria-label="Edit token label"
             />
-            {/* Confirm button */}
             <button
               onMouseDown={(e) => { e.preventDefault(); commitName(); }}
               aria-label="Confirm name"
               title="Confirm"
               className="shrink-0 rounded p-0.5 text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="2,8 6,12 14,4" />
-              </svg>
+              <CheckIcon />
             </button>
-            {/* Cancel button */}
             <button
               onMouseDown={(e) => { e.preventDefault(); cancelEditName(); }}
               aria-label="Cancel edit"
               title="Cancel"
-              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+              className={iconButtonClass}
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              <CloseIcon />
             </button>
           </>
         ) : (
-          /* ── Normal mode ── */
           <>
-            {/* Drag handle — purely visual affordance; draggable is on the wrapper div in Action.tsx */}
-            <span
-              aria-hidden="true"
-              className="shrink-0 cursor-grab text-text-disabled dark:text-text-disabled-dark"
-            >
-              <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
-                <circle cx="5" cy="4" r="1.2" />
-                <circle cx="5" cy="8" r="1.2" />
-                <circle cx="5" cy="12" r="1.2" />
-                <circle cx="11" cy="4" r="1.2" />
-                <circle cx="11" cy="8" r="1.2" />
-                <circle cx="11" cy="12" r="1.2" />
-              </svg>
+            {/* Visual cue only; the draggable element is the wrapper in Action.tsx. */}
+            <span className="shrink-0 cursor-grab text-text-disabled dark:text-text-disabled-dark">
+              <DragHandleIcon />
             </span>
-
-            {/* Chevron + name (collapse toggle) */}
             <button
               onClick={() => setIsOpen((v) => !v)}
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm font-semibold text-text-primary dark:text-text-primary-dark"
               aria-expanded={isOpen}
               aria-label={`Toggle ${displayName}`}
             >
-              <svg
-                viewBox="0 0 16 16"
-                width="12"
-                height="12"
-                aria-hidden="true"
-                className={`shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
-              >
-                <path d="M5 3l6 5-6 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <ChevronIcon open={isOpen} />
               <span className="truncate">{displayName}</span>
               <span className="ml-1 shrink-0 rounded px-1 py-0.5 text-2xs font-normal text-text-disabled dark:text-text-disabled-dark capitalize">
                 {data.characterType}
               </span>
             </button>
 
-            {/* Edit name button */}
             <button
               onClick={startEditingName}
               aria-label={`Edit label for ${displayName}`}
               title="Edit label"
-              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+              className={iconButtonClass}
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 2l3 3-8 8H3v-3l8-8z" />
-              </svg>
+              <PencilIcon />
             </button>
 
-            {/* Center-on-token button */}
             <button
-              onClick={() => void handleCenterOnToken()}
+              onClick={() => void centerViewportOn(item.position)}
               aria-label={`Center view on ${displayName}`}
               title="Center view on token"
-              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+              className={iconButtonClass}
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                <circle cx="8" cy="8" r="3" />
-                <line x1="8" y1="1" x2="8" y2="4" />
-                <line x1="8" y1="12" x2="8" y2="15" />
-                <line x1="1" y1="8" x2="4" y2="8" />
-                <line x1="12" y1="8" x2="15" y2="8" />
-              </svg>
+              <CrosshairIcon />
             </button>
 
-            {/* Unpin button */}
             <button
-              onClick={() => void untrackToken(item.id)}
+              onClick={() => untrackToken(item.id)}
               aria-label={`Unpin ${displayName} from Action panel`}
               title="Unpin from Action panel"
-              className="shrink-0 rounded p-0.5 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
+              className={iconButtonClass}
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              <CloseIcon />
             </button>
           </>
         )}
       </div>
 
-      {/* ── Expanded body: shared TokenEditor ───────────────────────── */}
       {isOpen && (
         <div className="flex flex-col gap-3 border-t border-white/10 px-2 pb-3 pt-2">
-          {/*
-           * No topRowExtra here — TrackedTokenRow has no "Open Editor" button.
-           * Name editing is handled in the header row above, not as a section.
-           * No TokenDisplaySection — display overrides are context-menu only.
-           */}
           <TokenEditor
             data={data}
             headingLevel="h3"

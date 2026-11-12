@@ -13,11 +13,10 @@ import {
   DEFAULT_TOKEN_DISPLAY_OVERRIDES,
   STRAIN_MIN,
   STRAIN_MAX,
+  TokenRecord,
 } from "../characterDataHelpers";
 
 describe("characterDataHelpers", () => {
-
-  // ─── Constants ────────────────────────────────────────────────────────────
 
   describe("exported constants", () => {
     it("STRAIN_MIN is 1", () => {
@@ -48,8 +47,6 @@ describe("characterDataHelpers", () => {
       });
     });
   });
-
-  // ─── resolveDisplaySettings ───────────────────────────────────────────────
 
   describe("resolveDisplaySettings", () => {
     const scene = {
@@ -132,8 +129,6 @@ describe("characterDataHelpers", () => {
     });
   });
 
-  // ─── Factory helpers ──────────────────────────────────────────────────────
-
   describe("factory helpers", () => {
     it("createInjurySlot produces unique IDs and default values", () => {
       const slot1 = createInjurySlot();
@@ -185,13 +180,10 @@ describe("characterDataHelpers", () => {
     it("createDefaultTokenRecord contains independent survivor and other blobs", () => {
       const record = createDefaultTokenRecord();
 
-      // Mutating one blob should not affect the other
       record.survivor.strainCurrent = 5;
       expect(record.other.strainCurrent).toBe(0);
     });
   });
-
-  // ─── getActiveData / setActiveData ────────────────────────────────────────
 
   describe("getActiveData / setActiveData", () => {
     it("getActiveData returns survivor data when activeType is 'survivor'", () => {
@@ -242,8 +234,6 @@ describe("characterDataHelpers", () => {
     });
   });
 
-  // ─── isTokenRecord ────────────────────────────────────────────────────────
-
   describe("isTokenRecord", () => {
     it("returns true for a valid default TokenRecord", () => {
       expect(isTokenRecord(createDefaultTokenRecord())).toBe(true);
@@ -285,8 +275,6 @@ describe("characterDataHelpers", () => {
       expect(isTokenRecord(r)).toBe(true);
     });
   });
-
-  // ─── migrateToTokenRecord ─────────────────────────────────────────────────
 
   describe("migrateToTokenRecord", () => {
     it("returns defaults for null input", () => {
@@ -445,7 +433,6 @@ describe("characterDataHelpers", () => {
         },
       };
       const migrated = migrateToTokenRecord(raw as any);
-      // seriousCount ?? 2 → 2
       expect(migrated.survivor.seriousCount).toBe(2);
     });
 
@@ -470,7 +457,6 @@ describe("characterDataHelpers", () => {
       expect(record.survivor.strainMax).toBe(4);
       expect(record.survivor.strainCurrent).toBe(1);
       expect(record.survivor.conditions).toEqual(["bleeding"]);
-      // Other blob should be a fresh default
       expect(record.other.characterType).toBe("other");
       expect(record.other.strainMax).toBe(1);
       expect(record.other.strainCurrent).toBe(0);
@@ -497,7 +483,6 @@ describe("characterDataHelpers", () => {
 
       expect(record.activeType).toBe("other");
       expect(record.other.strainMax).toBe(2);
-      // Survivor blob should be a fresh default
       expect(record.survivor.strainMax).toBe(3);
       expect(isTokenRecord(record)).toBe(true);
     });
@@ -537,6 +522,32 @@ describe("characterDataHelpers", () => {
       expect(migrated.survivor.seriousInjuries[1].complications).toEqual(["Limp"]);
       expect(migrated.survivor.criticalInjury.description).toBe("Chest");
       expect(migrated.survivor.criticalInjury.complications).toEqual([]);
+    });
+
+    it("defaults displayName to an empty string when the record has none", () => {
+      const withoutName: Partial<TokenRecord> = createDefaultTokenRecord();
+      delete withoutName.displayName;
+      expect(migrateToTokenRecord(withoutName).displayName).toBe("");
+    });
+
+    it("uses displayAlias when the record has no displayName", () => {
+      const withoutName: Partial<TokenRecord> = createDefaultTokenRecord();
+      delete withoutName.displayName;
+      const migrated = migrateToTokenRecord({ ...withoutName, displayAlias: "Hero" });
+      expect(migrated.displayName).toBe("Hero");
+    });
+
+    it("migrates a bare Other CharacterData into the other slot and activates it", () => {
+      const other = { ...createOtherData(), strainCurrent: 1 };
+      const migrated = migrateToTokenRecord(other);
+      expect(migrated.activeType).toBe("other");
+      expect(migrated.other.strainCurrent).toBe(1);
+      expect(migrated.survivor).toEqual({
+        ...createSurvivorData(),
+        seriousInjuries: migrated.survivor.seriousInjuries,
+        criticalInjury: migrated.survivor.criticalInjury,
+        lethalInjury: migrated.survivor.lethalInjury,
+      });
     });
   });
 });

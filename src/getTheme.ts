@@ -1,10 +1,7 @@
 import { createTheme } from "@mui/material/styles";
 import { Theme } from "@owlbear-rodeo/sdk";
 
-/**
- * Build a MUI theme whose palette mirrors the current OBR theme.
- * Pass the OBR Theme object from OBR.theme.getTheme() to sync colors.
- */
+/** Build a MUI theme matching the given OBR theme, or MUI's defaults without one. */
 export function getTheme(theme?: Theme) {
   return createTheme({
     palette: theme

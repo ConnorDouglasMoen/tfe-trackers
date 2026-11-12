@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Multi-page app config — each entry point is a separate OBR extension page.
+// Each entry point is a separate page loaded by Owlbear Rodeo.
 export default defineConfig({
   plugins: [react()],
   build: {

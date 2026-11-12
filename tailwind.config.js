@@ -51,12 +51,10 @@ export default {
             dark: "rgb(80, 30, 100)",
           },
         },
-        // Hex values so Tailwind opacity modifiers (e.g. border-strain/40) work correctly.
+        // Hex so opacity modifiers like border-strain/60 work.
         strain: {
-          DEFAULT: "#d25050",   // empty box border + hover
-          checked: "#b42828",   // checked box fill (light)
-          checkedDark: "#781818", // checked box fill (dark)
-          dark: "#a02828",      // empty box border in dark mode
+          DEFAULT: "#d25050",
+          checked: "#b42828",
         },
       },
     },

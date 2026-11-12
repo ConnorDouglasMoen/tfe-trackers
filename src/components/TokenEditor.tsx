@@ -1,40 +1,16 @@
-/**
- * TokenEditor
- *
- * Shared editor UI for the character type toggle, strain, injuries, and
- * conditions sections. Used by both TokenMenu (context menu) and
- * TrackedTokenRow (GM Action panel).
- *
- * ── Design principles ────────────────────────────────────────────────────────
- *
- * All data and mutation callbacks are passed as props so the component is
- * agnostic about the persistence target:
- *   - TokenMenu supplies callbacks that dispatch to useCharacterDataStore
- *     (Zustand), which writes to the current OBR selection.
- *   - TrackedTokenRow supplies callbacks that go through its applyMutation
- *     helper, which writes directly to a specific item ID.
- *
- * Intentional differences between contexts are preserved via optional props:
- *   - `headingLevel`: "h2" in TokenMenu, "h3" in TrackedTokenRow (nesting).
- *   - `topRowExtra`: render slot for the GM "Open Editor" button shown only
- *     inside TokenMenu.
- *
- * Anything that belongs exclusively to one context (display overrides, header
- * controls, popover button) stays in the wrapper component.
- */
-
 import { useState } from "react";
 import { CharacterData, CharacterType, InjurySlot, STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
+import { getSeriousTier } from "../tokenRecordMutations";
 import StrainRow from "./StrainRow";
 import InjurySlotCard from "./InjurySlotCard";
+import { CloseIcon } from "./icons";
+import { segmentActiveClass, segmentInactiveClass } from "./SegmentedControl";
 
-// ─── Stepper ─────────────────────────────────────────────────────────────────
+const sectionHeadingClass =
+  "text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark";
 
-/**
- * Shared +/- stepper used for strain max and injury slot tier controls.
- * Identical in both TokenMenu and TrackedTokenRow; defined once here.
- */
-export function Stepper({
+/** A pair of −/+ buttons. */
+function Stepper({
   onDecrement,
   onIncrement,
   disableDecrement,
@@ -73,24 +49,13 @@ export function Stepper({
   );
 }
 
-// ─── ConditionsEditor ─────────────────────────────────────────────────────────
-
-/**
- * Conditions input + saved list.
- *
- * Accepts callbacks so it can be driven from either the Zustand store
- * (TokenMenu) or the applyMutation pattern (TrackedTokenRow).
- *
- * Exported so the wrappers can render it standalone if needed.
- */
-export function ConditionsEditor({
+function ConditionsEditor({
   conditions,
   headingLevel = "h2",
   onAdd,
   onRemove,
 }: {
   conditions: string[];
-  /** Heading element for correct document outline in each context. */
   headingLevel?: "h2" | "h3";
   onAdd: (text: string) => void;
   onRemove: (index: number) => void;
@@ -109,7 +74,7 @@ export function ConditionsEditor({
 
   return (
     <section>
-      <Heading className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+      <Heading className={`mb-1 ${sectionHeadingClass}`}>
         Conditions
       </Heading>
       <input
@@ -135,10 +100,7 @@ export function ConditionsEditor({
                 aria-label={`Remove condition: ${condition}`}
                 className="shrink-0 text-text-disabled hover:text-text-secondary dark:text-text-disabled-dark dark:hover:text-text-secondary-dark"
               >
-                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                  <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
+                <CloseIcon />
               </button>
             </li>
           ))}
@@ -148,65 +110,34 @@ export function ConditionsEditor({
   );
 }
 
-// ─── TokenEditor ──────────────────────────────────────────────────────────────
-
 export interface TokenEditorCallbacks {
-  /** Switch the active character type. */
   onSetCharacterType: (type: CharacterType) => void;
-  /** Update strainCurrent to the new value. */
   onSetStrainCurrent: (current: number) => void;
-  /** Update strainMax to the new value. */
   onSetStrainMax: (max: number) => void;
-  /** Merge a partial patch into serious injury slot at index 0 or 1. */
   onUpdateSeriousInjury: (index: 0 | 1, patch: Partial<InjurySlot>) => void;
-  /** Merge a partial patch into the critical injury slot. */
   onUpdateCriticalInjury: (patch: Partial<InjurySlot>) => void;
-  /** Merge a partial patch into the lethal injury slot. */
   onUpdateLethalInjury: (patch: Partial<InjurySlot>) => void;
-  /**
-   * Advance or retreat the serious tier by delta (+1/-1).
-   * Tier: 0 = none, 1 = one slot, 2 = two slots.
-   */
   onAdjustSeriousTier: (delta: 1 | -1) => void;
-  /** Set hasCritical. */
   onSetHasCritical: (val: boolean) => void;
-  /** Set hasLethal. */
   onSetHasLethal: (val: boolean) => void;
-  /** Append a condition string. */
   onAddCondition: (text: string) => void;
-  /** Remove the condition at the given index. */
   onRemoveCondition: (index: number) => void;
 }
 
 interface TokenEditorProps extends TokenEditorCallbacks {
-  /** Active CharacterData blob (always the currently displayed type). */
   data: CharacterData;
-  /**
-   * Optional extra content rendered to the right of the character type toggle.
-   * Used by TokenMenu to show the GM "Open Editor" button.
-   */
+  /** Rendered to the right of the Survivor/Other toggle. */
   topRowExtra?: React.ReactNode;
-  /**
-   * Optional content rendered in its own row directly below the type toggle.
-   * Used by TokenMenu for the name input row.
-   */
+  /** Rendered on its own row below the Survivor/Other toggle. */
   belowToggleContent?: React.ReactNode;
-  /**
-   * Heading level for all section headings.
-   * TokenMenu is a top-level panel → "h2".
-   * TrackedTokenRow is nested inside Action → "h3".
-   */
+  /** "h3" when the editor is nested under another heading. */
   headingLevel?: "h2" | "h3";
 }
 
 /**
- * Core token editor: character type toggle, strain, injuries, and conditions.
- *
- * Does not include:
- *   - Name section (TokenMenu shows it as a top-level section; TrackedTokenRow
- *     uses an inline header input instead).
- *   - Token display overrides (TokenMenu only).
- *   - Popover/panel chrome (collapse header, center/unpin buttons).
+ * Editing UI for a token's character type, strain, injuries, and conditions.
+ * Persistence is up to the caller: the token menu writes to the selection,
+ * while the Action panel writes to a specific token.
  */
 export function TokenEditor({
   data,
@@ -228,12 +159,11 @@ export function TokenEditor({
   const Heading = headingLevel;
 
   const isSurvivor = data.characterType === "survivor";
-  // Numeric tier used to drive stepper bounds: 0 = none, 1 = one slot, 2 = two.
-  const seriousLevel = !data.hasSerious ? 0 : data.seriousCount === 2 ? 2 : 1;
+  const seriousTier = getSeriousTier(data);
+  const hasTwoSerious = isSurvivor || data.seriousCount === 2;
 
   return (
     <>
-      {/* ── Character Type Toggle + optional extra slot ────────────── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 rounded-lg bg-black/10 p-0.5 dark:bg-white/10 self-start">
           {(["survivor", "other"] as const).map((type: CharacterType) => (
@@ -241,26 +171,21 @@ export function TokenEditor({
               key={type}
               onClick={() => onSetCharacterType(type)}
               className={`rounded-md px-3 py-1 text-xs font-semibold capitalize transition duration-150 ${
-                data.characterType === type
-                  ? "bg-white/80 text-text-primary shadow-sm dark:bg-white/20 dark:text-text-primary-dark"
-                  : "text-text-secondary hover:text-text-primary dark:text-text-secondary-dark dark:hover:text-text-primary-dark"
+                data.characterType === type ? segmentActiveClass : segmentInactiveClass
               }`}
             >
               {type === "survivor" ? "Survivor" : "Other"}
             </button>
           ))}
         </div>
-        {/* Renders the "Open Editor" button in TokenMenu; nothing in TrackedTokenRow. */}
         {topRowExtra}
       </div>
 
-      {/* Renders the name input row in TokenMenu; nothing in TrackedTokenRow. */}
       {belowToggleContent}
 
-      {/* ── Strain ────────────────────────────────────────────────────── */}
       <section>
         <div className="mb-1 flex items-center justify-between">
-          <Heading className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+          <Heading className={sectionHeadingClass}>
             Strain
           </Heading>
           <div className="flex items-center gap-1.5 text-xs text-text-secondary dark:text-text-secondary-dark">
@@ -283,13 +208,12 @@ export function TokenEditor({
         </div>
       </section>
 
-      {/* ── Injuries ──────────────────────────────────────────────────── */}
       <section>
         <div className="mb-1 flex items-center justify-between">
-          <Heading className="text-xs font-semibold uppercase tracking-wide text-text-secondary dark:text-text-secondary-dark">
+          <Heading className={sectionHeadingClass}>
             Injuries
           </Heading>
-          {/* Injury tier steppers — only shown for "Other"; Survivors have fixed slots. */}
+          {/* Survivors always have every slot; Others choose theirs. */}
           {!isSurvivor && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-0.5">
@@ -297,8 +221,8 @@ export function TokenEditor({
                 <Stepper
                   onDecrement={() => onAdjustSeriousTier(-1)}
                   onIncrement={() => onAdjustSeriousTier(1)}
-                  disableDecrement={seriousLevel <= 0}
-                  disableIncrement={seriousLevel >= 2}
+                  disableDecrement={seriousTier === 0}
+                  disableIncrement={seriousTier === 2}
                 />
               </div>
               <div className="flex items-center gap-0.5">
@@ -328,10 +252,10 @@ export function TokenEditor({
               <InjurySlotCard
                 slot={data.seriousInjuries[0]}
                 severity="serious"
-                label={isSurvivor || data.seriousCount === 2 ? "Serious #1" : "Serious"}
+                label={hasTwoSerious ? "Serious #1" : "Serious"}
                 onUpdate={(patch) => onUpdateSeriousInjury(0, patch)}
               />
-              {(isSurvivor || data.seriousCount === 2) && (
+              {hasTwoSerious && (
                 <InjurySlotCard
                   slot={data.seriousInjuries[1]}
                   severity="serious"
@@ -367,7 +291,6 @@ export function TokenEditor({
         </div>
       </section>
 
-      {/* ── Conditions ────────────────────────────────────────────────── */}
       <ConditionsEditor
         conditions={data.conditions}
         headingLevel={headingLevel}

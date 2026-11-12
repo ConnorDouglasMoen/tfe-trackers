@@ -1,17 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Tests for useTrackedTokensStore.
- *
- * Covers the core requirements:
- *  1. Tracked IDs persist in localStorage across simulated page refreshes.
- *  2. trackToken / untrackToken update both the store and localStorage.
- *  3. init() loads from localStorage synchronously (no async gap on mount).
- *  4. StorageEvent from another frame triggers a re-read.
- *  5. Duplicate IDs are not added.
- *  6. isTracked reflects live state.
- *  7. pruneStaleIds removes IDs absent from the live scene item list; no-op on empty list.
- *  8. reorderTokens persists a new ordering and rejects invalid inputs.
- */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import OBR from "@owlbear-rodeo/sdk";
 import { useTrackedTokensStore } from "../useTrackedTokensStore";
@@ -19,18 +6,15 @@ import { getPluginId } from "../getPluginId";
 
 const STORAGE_KEY = getPluginId("trackedTokenIds");
 
-/** Reset the Zustand store to its initial state between tests. */
 function resetStore() {
   useTrackedTokensStore.setState({ trackedTokenIds: [] });
 }
 
-/** Write IDs directly to localStorage, simulating what another frame or a
- *  previous session would have stored. */
+/** Write IDs the way another frame or an earlier session would have. */
 function seedStorage(ids: string[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
 }
 
-/** Read IDs directly from localStorage to verify writes. */
 function readStorage(): string[] {
   const raw = localStorage.getItem(STORAGE_KEY);
   return raw !== null ? (JSON.parse(raw) as string[]) : [];
@@ -38,11 +22,7 @@ function readStorage(): string[] {
 
 beforeEach(() => {
   resetStore();
-  // localStorage is cleared by the global afterEach in setup.ts, but reset
-  // the store here too so each test starts from a known state.
 });
-
-// ─── Persistence ─────────────────────────────────────────────────────────────
 
 describe("persistence across page refresh", () => {
   it("init() loads IDs that were saved in a previous session", () => {
@@ -69,21 +49,17 @@ describe("persistence across page refresh", () => {
   });
 
   it("init() is synchronous — state is set before any await", () => {
-    // This is the key regression test: state must be available immediately
-    // after init() returns, not after a promise resolves.
+    // The list must be available as soon as init() returns, with no async gap.
     seedStorage(["token-abc"]);
 
     const { init } = useTrackedTokensStore.getState();
     const cleanup = init();
 
-    // No await — synchronous check.
     expect(useTrackedTokensStore.getState().trackedTokenIds).toContain("token-abc");
 
     cleanup();
   });
 });
-
-// ─── trackToken ──────────────────────────────────────────────────────────────
 
 describe("trackToken", () => {
   it("adds an ID to the store and localStorage", () => {
@@ -127,8 +103,6 @@ describe("trackToken", () => {
   });
 });
 
-// ─── untrackToken ─────────────────────────────────────────────────────────────
-
 describe("untrackToken", () => {
   it("removes an ID from the store and localStorage", () => {
     seedStorage(["token-1", "token-2"]);
@@ -171,8 +145,6 @@ describe("untrackToken", () => {
   });
 });
 
-// ─── isTracked ────────────────────────────────────────────────────────────────
-
 describe("isTracked", () => {
   it("returns true for a tracked ID", () => {
     const { init, trackToken, isTracked } = useTrackedTokensStore.getState();
@@ -208,15 +180,12 @@ describe("isTracked", () => {
   });
 });
 
-// ─── Cross-frame StorageEvent sync ───────────────────────────────────────────
-
 describe("StorageEvent sync (cross-frame writes)", () => {
   it("re-reads localStorage when a storage event fires for the key", () => {
     const { init } = useTrackedTokensStore.getState();
     const cleanup = init();
 
-    // Simulate background script (context menu) writing directly to localStorage
-    // and dispatching the storage event that a cross-frame write would trigger.
+    // What the background page's pin menu does from another frame.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(["token-from-bg"]));
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -260,7 +229,6 @@ describe("StorageEvent sync (cross-frame writes)", () => {
     trackToken("token-before-cleanup");
     cleanup();
 
-    // After cleanup, a storage event should not update the store.
     localStorage.setItem(STORAGE_KEY, JSON.stringify(["token-after-cleanup"]));
     window.dispatchEvent(
       new StorageEvent("storage", {
@@ -269,7 +237,6 @@ describe("StorageEvent sync (cross-frame writes)", () => {
       }),
     );
 
-    // Store should still hold the pre-cleanup value.
     expect(useTrackedTokensStore.getState().trackedTokenIds).toContain(
       "token-before-cleanup",
     );
@@ -279,9 +246,6 @@ describe("StorageEvent sync (cross-frame writes)", () => {
   });
 
   it("does not register an OBR player onChange listener (removed as redundant)", () => {
-    // The OBR.player.onChange subscription was removed because it fired on
-    // every selection/role/theme change and was redundant with the StorageEvent
-    // listener, which already handles cross-frame localStorage writes.
     const { init } = useTrackedTokensStore.getState();
     const cleanup = init();
 
@@ -290,8 +254,6 @@ describe("StorageEvent sync (cross-frame writes)", () => {
     cleanup();
   });
 });
-
-// ─── Malformed localStorage data ─────────────────────────────────────────────
 
 describe("resilience to malformed localStorage data", () => {
   it("treats invalid JSON as an empty list", () => {
@@ -325,7 +287,6 @@ describe("resilience to malformed localStorage data", () => {
   });
 });
 
-// ─── pruneStaleIds ────────────────────────────────────────────────────────────
 describe("pruneStaleIds", () => {
   it("removes IDs not present in the live item list", () => {
     seedStorage(["token-1", "token-2", "token-deleted"]);
@@ -360,13 +321,12 @@ describe("pruneStaleIds", () => {
     const { init, pruneStaleIds } = useTrackedTokensStore.getState();
     const cleanup = init();
 
-    // Capture state reference before prune to verify no unnecessary re-render.
     const beforeIds = useTrackedTokensStore.getState().trackedTokenIds;
     pruneStaleIds(["token-1", "token-2", "token-3"]);
     const afterIds = useTrackedTokensStore.getState().trackedTokenIds;
 
     expect(afterIds).toEqual(["token-1", "token-2"]);
-    // Same array reference — no setState call was made.
+    // Same array reference, so subscribers don't re-render.
     expect(afterIds).toBe(beforeIds);
 
     cleanup();
@@ -376,7 +336,6 @@ describe("pruneStaleIds", () => {
     const { init, pruneStaleIds } = useTrackedTokensStore.getState();
     const cleanup = init();
 
-    // Should not throw or write to storage.
     pruneStaleIds(["token-1", "token-2"]);
 
     expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([]);
@@ -385,15 +344,13 @@ describe("pruneStaleIds", () => {
   });
 
   it("does not wipe tracked tokens when called with an empty live list", () => {
-    // Regression: on Action panel mount, items starts as [] before the scene
-    // fetch resolves. pruneStaleIds([]) must not clear pinned tokens.
+    // The Action panel's item list is [] until the scene loads.
     seedStorage(["token-1", "token-2"]);
     const { init, pruneStaleIds } = useTrackedTokensStore.getState();
     const cleanup = init();
 
     pruneStaleIds([]);
 
-    // Tracked tokens must survive an empty-list prune call.
     expect(useTrackedTokensStore.getState().trackedTokenIds).toEqual([
       "token-1",
       "token-2",
@@ -415,8 +372,6 @@ describe("pruneStaleIds", () => {
     cleanup();
   });
 });
-
-// ─── reorderTokens ───────────────────────────────────────────────────────────
 
 describe("reorderTokens", () => {
   it("reorders the list and persists to localStorage", () => {

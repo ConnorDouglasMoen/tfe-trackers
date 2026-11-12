@@ -12,8 +12,7 @@ OBR.onReady(async () => {
     OBR.player.getRole(),
   ]);
 
-  // Detect if this page was opened as a popover (via ?popover=1 in the URL).
-  // The TokenMenu uses this to hide the "Open Full Editor" button.
+  // The "Open Editor" popover loads this same page with ?popover=1.
   const isPopover = new URLSearchParams(window.location.search).get("popover") === "1";
 
   ReactDOM.createRoot(document.getElementById("root")!).render(

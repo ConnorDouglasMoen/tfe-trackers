@@ -11,10 +11,8 @@ import {
   createOtherData,
   DisplaySettings,
 } from "../characterDataHelpers";
+import { MAX_CONDITIONS, getAllAttachmentIds } from "../background/onMapItemIds";
 
-// ─── Test fixtures ────────────────────────────────────────────────────────────
-
-/** Creates a minimal mock Image token suitable for all builder helpers. */
 function createMockImage(id = "test-token"): Image {
   return {
     id,
@@ -36,8 +34,6 @@ const defaultSceneSettings: DisplaySettings = {
   markerScale: 1.0,
   textScale: 1.0,
 };
-
-// ─── buildStrainItems ─────────────────────────────────────────────────────────
 
 describe("buildStrainItems", () => {
   it("creates 2 items per strain box (bg shape + x text)", () => {
@@ -165,7 +161,6 @@ describe("buildStrainItems", () => {
 
     buildStrainItems(image, 150, data, defaultSceneSettings, addItems);
 
-    // Boxes 0 and 1 filled, 2 and 3 empty
     const bg0 = addItems.find((i: any) => i.id.includes("strain-bg-0")) as any;
     const bg1 = addItems.find((i: any) => i.id.includes("strain-bg-1")) as any;
     const bg2 = addItems.find((i: any) => i.id.includes("strain-bg-2")) as any;
@@ -177,8 +172,6 @@ describe("buildStrainItems", () => {
     expect(bg3.fillColor).toBe("#1a0000");
   });
 });
-
-// ─── buildInjuryItems ─────────────────────────────────────────────────────────
 
 describe("buildInjuryItems", () => {
   it("injuryDisplay='all' renders empty injury circles for a survivor", () => {
@@ -365,8 +358,6 @@ describe("buildInjuryItems", () => {
   });
 });
 
-// ─── buildConditionItems ──────────────────────────────────────────────────────
-
 describe("buildConditionItems", () => {
   it("renders one bubble (2 items) per unique string", () => {
     const image = createMockImage();
@@ -420,7 +411,6 @@ describe("buildConditionItems", () => {
 
     expect(addItems).toHaveLength(2);
     const text = addItems.find((i: any) => i.type === "TEXT") as any;
-    // Lethal color wins over condition white
     expect(text.fillColor).toBe("#7c4291");
   });
 
@@ -436,7 +426,6 @@ describe("buildConditionItems", () => {
 
     expect(addItems).toHaveLength(2);
     const text = addItems.find((i: any) => i.type === "TEXT") as any;
-    // Critical color wins
     expect(text.fillColor).toBe("#db7777");
   });
 
@@ -531,12 +520,10 @@ describe("buildConditionItems", () => {
     expect(text.fillColor).toBe("#d68e68");
   });
 
-  it("case-insensitive dedup preserves first-seen text casing", () => {
-    // "DAZED" and "dazed" should collapse to one bubble.
+  it("collapses text that differs only in case into one bubble", () => {
     const image = createMockImage();
     const data = createSurvivorData();
     data.conditions = ["DAZED"];
-    // Complication with different casing
     data.criticalInjury = {
       id: "c", description: "Head", complications: ["dazed"], treated: false,
     };
@@ -544,13 +531,37 @@ describe("buildConditionItems", () => {
 
     buildConditionItems(image, 150, data, defaultSceneSettings, addItems, true);
 
-    // Only one bubble
     const texts = addItems.filter((i: any) => i.type === "TEXT");
     expect(texts).toHaveLength(1);
   });
-});
+  it("uses the spelling and color of the most severe duplicate", () => {
+    const image = createMockImage();
+    const data = createSurvivorData();
+    data.seriousInjuries[0] = { id: "s0", description: "Arm", complications: ["bleeding"], treated: false };
+    data.lethalInjury = { id: "l", description: "Artery", complications: ["Bleeding"], treated: false };
+    const addItems: Item[] = [];
 
-// ─── buildNameBubble ──────────────────────────────────────────────────────────
+    buildConditionItems(image, 150, data, defaultSceneSettings, addItems, true);
+
+    const texts = addItems.filter((i: any) => i.type === "TEXT") as any[];
+    expect(texts).toHaveLength(1);
+    expect(texts[0].plainText).toBe("Bleeding");
+    expect(texts[0].fillColor).toBe("#7c4291");
+  });
+
+  it("never emits more bubbles than getAllAttachmentIds can clean up", () => {
+    const image = createMockImage();
+    const data = createSurvivorData();
+    data.conditions = Array.from({ length: MAX_CONDITIONS + 5 }, (_, i) => `Condition ${i}`);
+    const addItems: Item[] = [];
+
+    buildConditionItems(image, 150, data, defaultSceneSettings, addItems, true);
+
+    expect(addItems).toHaveLength(MAX_CONDITIONS * 2);
+    const sweptIds = new Set(getAllAttachmentIds(image.id));
+    expect(addItems.every((item) => sweptIds.has(item.id))).toBe(true);
+  });
+});
 
 describe("buildNameBubble", () => {
   it("creates 2 items (PATH bg + TEXT) for a non-empty display name", () => {
@@ -637,8 +648,6 @@ describe("buildNameBubble", () => {
     expect(path.strokeColor).toBe("#e8d8a0");
   });
 });
-
-// ─── Defensive scaling limits (shared across builders) ───────────────────────
 
 describe("defensive scaling limits", () => {
   it("strain boxes: scale 0.1 clamps to 0.5 → box width 7", () => {

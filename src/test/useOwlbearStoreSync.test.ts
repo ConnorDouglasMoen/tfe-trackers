@@ -1,37 +1,9 @@
 // @vitest-environment jsdom
-/**
- * Tests for useOwlbearStoreSync.
- *
- * The hook mounts once per entry-point app and keeps the Zustand
- * OwlbearStore in sync with live OBR SDK events. Covers:
- *
- *  1. Scene ready / not-ready lifecycle:
- *       - sceneReady flips to true when OBR.scene.isReady() resolves true.
- *       - sceneReady flips to true when onReadyChange fires with true.
- *       - sceneReady flips to false when onReadyChange fires with false.
- *
- *  2. Items subscription lifecycle:
- *       - getItems() is called on mount when sceneReady is true.
- *       - items are set from the resolved getItems() value.
- *       - onChange subscription is registered when sceneReady is true.
- *       - items are cleared to [] when sceneReady becomes false.
- *       - onChange unsubscribe is called when sceneReady becomes false.
- *
- *  3. Stale-promise guard (item 1 regression):
- *       - If getItems() resolves after sceneReady has gone false, the
- *         resolved value must NOT overwrite the [] that was already set.
- *
- *  4. Player sync: role and selection are loaded and updated via onChange.
- *
- *  5. Theme sync: themeMode is loaded and updated via onChange.
- */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import OBR, { Item } from "@owlbear-rodeo/sdk";
 import { useOwlbearStoreSync } from "../useOwlbearStoreSync";
 import { useOwlbearStore } from "../useOwlbearStore";
-
-// ─── Store reset ──────────────────────────────────────────────────────────────
 
 function resetStore() {
   useOwlbearStore.setState({
@@ -48,8 +20,6 @@ beforeEach(() => {
   resetStore();
 });
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function makeItem(id: string): Item {
   return {
     id,
@@ -62,8 +32,6 @@ function makeItem(id: string): Item {
     metadata: {},
   } as unknown as Item;
 }
-
-// ─── Scene ready / not-ready lifecycle ───────────────────────────────────────
 
 describe("scene ready / not-ready lifecycle", () => {
   it("sets sceneReady=true when OBR.scene.isReady() resolves true on mount", async () => {
@@ -134,8 +102,6 @@ describe("scene ready / not-ready lifecycle", () => {
     unmount();
   });
 });
-
-// ─── Items subscription lifecycle ─────────────────────────────────────────────
 
 describe("items subscription lifecycle", () => {
   it("calls getItems() when sceneReady is true and sets items in the store", async () => {
@@ -253,15 +219,10 @@ describe("items subscription lifecycle", () => {
   });
 });
 
-// ─── Stale-promise guard ──────────────────────────────────────────────────────
-
 describe("stale-promise guard (item 1 regression)", () => {
   it("does not overwrite items=[] if getItems resolves after sceneReady goes false", async () => {
-    // Set up: scene starts ready, then immediately goes not-ready before
-    // the getItems() promise resolves.
     vi.mocked(OBR.scene.isReady).mockResolvedValue(true);
 
-    // Make getItems hang until we manually resolve it.
     let resolveItems!: (items: Item[]) => void;
     const hangingItems = new Promise<Item[]>((res) => { resolveItems = res; });
     vi.mocked(OBR.scene.items.getItems).mockReturnValue(hangingItems);
@@ -274,30 +235,25 @@ describe("stale-promise guard (item 1 regression)", () => {
 
     const { unmount } = renderHook(() => useOwlbearStoreSync());
 
-    // Let the effect run (sceneReady=true triggers the items effect).
     await vi.waitFor(() => {
       expect(useOwlbearStore.getState().sceneReady).toBe(true);
     });
 
-    // Scene goes not-ready before getItems resolves — store should clear.
     await act(async () => {
       capturedReadyChange!(false);
     });
     expect(useOwlbearStore.getState().items).toHaveLength(0);
 
-    // Now resolve the stale getItems promise with data.
     await act(async () => {
       resolveItems([makeItem("stale-item")]);
     });
 
-    // The stale result must NOT have overwritten the [] that was set.
+    // The late result must not overwrite the cleared list.
     expect(useOwlbearStore.getState().items).toHaveLength(0);
 
     unmount();
   });
 });
-
-// ─── Player sync ──────────────────────────────────────────────────────────────
 
 describe("player sync", () => {
   it("sets role from OBR.player.getRole() on mount", async () => {
@@ -351,8 +307,6 @@ describe("player sync", () => {
     expect(OBR.player.onChange).toHaveBeenCalled();
   });
 });
-
-// ─── Theme sync ───────────────────────────────────────────────────────────────
 
 describe("theme sync", () => {
   it("sets themeMode from OBR.theme.getTheme() on mount", async () => {

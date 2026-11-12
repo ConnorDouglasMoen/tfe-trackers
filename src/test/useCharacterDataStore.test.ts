@@ -1,17 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Tests for useCharacterDataStore.
- *
- * The store owns all in-memory mutation of the active TokenRecord for the
- * token context menu and is used indirectly by TrackedTokenRow via its own
- * local state. These tests verify:
- *  - Each action produces the correct state shape.
- *  - Strain clamping (0 ≤ current ≤ max, STRAIN_MIN ≤ max ≤ STRAIN_MAX).
- *  - Survivor / Other type switching preserves both blobs independently.
- *  - Condition add / remove behaves correctly.
- *  - Display overrides and displayName mutations work.
- *  - writeToItem is called with the updated record after each mutation.
- */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useCharacterDataStore } from "../useCharacterDataStore";
 import {
@@ -21,7 +8,6 @@ import {
   getActiveData,
 } from "../characterDataHelpers";
 
-/** Reset the store to a fresh default record before each test. */
 function resetStore() {
   const record = createDefaultTokenRecord();
   useCharacterDataStore.setState({
@@ -32,8 +18,6 @@ function resetStore() {
 }
 
 beforeEach(resetStore);
-
-// ─── setRecord ────────────────────────────────────────────────────────────────
 
 describe("setRecord", () => {
   it("replaces the record and updates the derived data field", () => {
@@ -61,8 +45,6 @@ describe("setRecord", () => {
   });
 });
 
-// ─── setCharacterType ─────────────────────────────────────────────────────────
-
 describe("setCharacterType", () => {
   it("switches activeType to 'other' and updates derived data", () => {
     useCharacterDataStore.getState().setCharacterType("other");
@@ -73,15 +55,11 @@ describe("setCharacterType", () => {
   });
 
   it("switching type does not mutate the other blob", () => {
-    // Set some survivor state
     useCharacterDataStore.getState().setStrainCurrent(2);
-    // Switch to other
     useCharacterDataStore.getState().setCharacterType("other");
-    // Switch back
     useCharacterDataStore.getState().setCharacterType("survivor");
 
     const state = useCharacterDataStore.getState();
-    // Survivor blob should still have strainCurrent = 2
     expect(state.record.survivor.strainCurrent).toBe(2);
   });
 
@@ -95,8 +73,6 @@ describe("setCharacterType", () => {
     expect(state.record.survivor.strainMax).toBe(3); // survivor default, untouched
   });
 });
-
-// ─── setStrainCurrent ─────────────────────────────────────────────────────────
 
 describe("setStrainCurrent", () => {
   it("sets strain within bounds", () => {
@@ -126,8 +102,6 @@ describe("setStrainCurrent", () => {
     expect(useCharacterDataStore.getState().data.strainCurrent).toBe(3);
   });
 });
-
-// ─── setStrainMax ─────────────────────────────────────────────────────────────
 
 describe("setStrainMax", () => {
   it("sets strainMax within bounds", () => {
@@ -161,8 +135,6 @@ describe("setStrainMax", () => {
     expect(useCharacterDataStore.getState().data.strainCurrent).toBe(2);
   });
 });
-
-// ─── updateSeriousInjury ──────────────────────────────────────────────────────
 
 describe("updateSeriousInjury", () => {
   it("patches slot 0 without affecting slot 1", () => {
@@ -199,8 +171,6 @@ describe("updateSeriousInjury", () => {
   });
 });
 
-// ─── updateCriticalInjury / updateLethalInjury ────────────────────────────────
-
 describe("updateCriticalInjury", () => {
   it("patches the critical injury slot", () => {
     useCharacterDataStore.getState().updateCriticalInjury({ description: "Head wound" });
@@ -224,8 +194,6 @@ describe("updateLethalInjury", () => {
     expect(useCharacterDataStore.getState().data.lethalInjury.description).toBe("Gut wound");
   });
 });
-
-// ─── setHasSerious / setSeriousCount / setHasCritical / setHasLethal ─────────
 
 describe("injury slot toggles", () => {
   it("setHasSerious(false) disables serious injuries", () => {
@@ -260,8 +228,6 @@ describe("injury slot toggles", () => {
     expect(useCharacterDataStore.getState().data.hasLethal).toBe(false);
   });
 });
-
-// ─── addCondition / removeCondition ──────────────────────────────────────────
 
 describe("addCondition", () => {
   it("appends a condition to the list", () => {
@@ -310,15 +276,12 @@ describe("removeCondition", () => {
   });
 });
 
-// ─── setDisplayOverride ───────────────────────────────────────────────────────
-
 describe("setDisplayOverride", () => {
   it("patches a single override field", () => {
     useCharacterDataStore.getState().setDisplayOverride({ showStrain: false });
 
     const state = useCharacterDataStore.getState();
     expect(state.record.displayOverrides.showStrain).toBe(false);
-    // Other fields remain null
     expect(state.record.displayOverrides.showConditions).toBeNull();
     expect(state.record.displayOverrides.injuryDisplay).toBeNull();
     expect(state.record.displayOverrides.showName).toBeNull();
@@ -349,8 +312,6 @@ describe("setDisplayOverride", () => {
   });
 });
 
-// ─── setDisplayName ───────────────────────────────────────────────────────────
-
 describe("setDisplayName", () => {
   it("sets the displayName on the record", () => {
     useCharacterDataStore.getState().setDisplayName("The Veteran");
@@ -370,8 +331,6 @@ describe("setDisplayName", () => {
   });
 });
 
-// ─── writeToItem integration ──────────────────────────────────────────────────
-
 describe("writeToItem callback", () => {
   it("calls writeToItem with the updated record after setStrainCurrent", async () => {
     const mockWrite = vi.fn().mockResolvedValue(undefined);
@@ -381,7 +340,6 @@ describe("writeToItem callback", () => {
 
     expect(mockWrite).toHaveBeenCalledOnce();
     const calledRecord = mockWrite.mock.calls[0][0];
-    // The record passed reflects the updated strain
     expect(getActiveData(calledRecord).strainCurrent).toBe(2);
   });
 
@@ -408,7 +366,6 @@ describe("writeToItem callback", () => {
   });
 
   it("does not call writeToItem when writeToItem is undefined", () => {
-    // No mock set — ensure no crash
     expect(() => {
       useCharacterDataStore.getState().setStrainCurrent(1);
     }).not.toThrow();

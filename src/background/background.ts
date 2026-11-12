@@ -1,206 +1,108 @@
-import OBR from "@owlbear-rodeo/sdk";
+import OBR, { KeyFilter } from "@owlbear-rodeo/sdk";
 import { getPluginId } from "../getPluginId";
 import { HIDDEN_METADATA_ID } from "../characterDataHelpers";
 import { clearTokenData } from "../itemMetadataHelpers";
+import { removeTrackedTokenId, toggleTrackedTokenId } from "../trackedTokenStorage";
 import { initOnMapDisplay } from "./onMapDisplay";
 
-/** localStorage key for pinned token IDs — must match useTrackedTokensStore. */
-const STORAGE_KEY = getPluginId("trackedTokenIds");
-
-// Use the same icon as the Action button for visual consistency.
-const menuIcon = new URL(
-  "../../public/tfe-cowboy.svg",
-  import.meta.url,
-).toString();
-
-const contextMenuLabel = "TFE Trackers";
-
-// Embed heights (pixels).
+const menuIcon = new URL("../../public/tfe-cowboy.svg", import.meta.url).toString();
+const MENU_LABEL = "TFE Trackers";
+const TOKEN_MENU_URL = "/src/tokenMenu/tokenMenu.html";
 const TOKEN_MENU_HEIGHT = 600;
+const PIN_LABEL = "Pin/Unpin to Action Panel";
 
-OBR.onReady(async () => {
-  // Log plugin name and version from the manifest. The manifest URL is
-  // relative to the page origin so it resolves correctly in both dev and
-  // production builds.
-  fetch(new URL("/manifest.json", window.location.origin).toString())
-    .then((r) => r.ok ? r.json() : Promise.reject(new Error(`${r.status}`)))
-    .then((json) =>
-      console.log(
-        `${json["name"] as string} - version: ${json["version"] as string}`,
-      ),
-    )
-    .catch((err) => console.warn("Could not load manifest.json:", err));
+/** Image tokens on the Character or Mount layer. */
+const TOKEN_FILTER: KeyFilter[] = [
+  { key: "layer", value: "CHARACTER", coordinator: "||" },
+  { key: "layer", value: "MOUNT" },
+  { key: "type", value: "IMAGE" },
+];
 
-  // Player context menu — hidden when trackers are marked hidden by GM.
+/** Tokens the GM hasn't hidden from players. */
+const NOT_HIDDEN_FILTER: KeyFilter[] = [
+  ...TOKEN_FILTER,
+  { key: ["metadata", getPluginId(HIDDEN_METADATA_ID)], value: true, operator: "!=" },
+];
+
+OBR.onReady(() => {
+  void logVersion();
+
+  // Players can open the editor on tokens they control that aren't hidden.
   OBR.contextMenu.create({
     id: getPluginId("player-menu"),
     icons: [
       {
         icon: menuIcon,
-        label: contextMenuLabel,
-        filter: {
-          every: [
-            { key: "layer", value: "CHARACTER", coordinator: "||" },
-            { key: "layer", value: "MOUNT" },
-            { key: "type", value: "IMAGE" },
-            {
-              key: ["metadata", getPluginId(HIDDEN_METADATA_ID)],
-              value: true,
-              operator: "!=",
-            },
-          ],
-          permissions: ["UPDATE"],
-          roles: ["PLAYER"],
-          max: 1,
-        },
+        label: MENU_LABEL,
+        filter: { every: NOT_HIDDEN_FILTER, permissions: ["UPDATE"], roles: ["PLAYER"], max: 1 },
       },
     ],
-    embed: {
-      url: "/src/tokenMenu/tokenMenu.html",
-      height: TOKEN_MENU_HEIGHT,
-    },
+    embed: { url: TOKEN_MENU_URL, height: TOKEN_MENU_HEIGHT },
   });
 
-  // GM context menu — always visible.
   OBR.contextMenu.create({
     id: getPluginId("gm-menu"),
     icons: [
       {
         icon: menuIcon,
-        label: contextMenuLabel,
-        filter: {
-          every: [
-            { key: "layer", value: "CHARACTER", coordinator: "||" },
-            { key: "layer", value: "MOUNT" },
-            { key: "type", value: "IMAGE" },
-          ],
-          roles: ["GM"],
-          max: 1,
-        },
+        label: MENU_LABEL,
+        filter: { every: TOKEN_FILTER, roles: ["GM"], max: 1 },
       },
     ],
-    embed: {
-      url: "/src/tokenMenu/tokenMenu.html",
-      height: TOKEN_MENU_HEIGHT,
-    },
+    embed: { url: TOKEN_MENU_URL, height: TOKEN_MENU_HEIGHT },
   });
 
-  // All-users context menu: pin/unpin a token from the Action panel tracker
-  // list. Each user's list is private — stored in player metadata, not scene
-  // metadata — so GMs and players maintain independent lists.
-  //
-  // Players only see this entry on tokens they have UPDATE permission on
-  // (i.e. tokens they own) and that are not hidden by the GM.
-  // GMs see it on all CHARACTER/MOUNT tokens.
+  // Each user's pinned list lives in their own browser storage. The Action
+  // panel picks up the change through a `storage` event.
   OBR.contextMenu.create({
     id: getPluginId("pin-token"),
     icons: [
       {
         icon: menuIcon,
-        label: "Pin/Unpin to Action Panel",
-        filter: {
-          every: [
-            { key: "layer", value: "CHARACTER", coordinator: "||" },
-            { key: "layer", value: "MOUNT" },
-            { key: "type", value: "IMAGE" },
-            {
-              key: ["metadata", getPluginId(HIDDEN_METADATA_ID)],
-              value: true,
-              operator: "!=",
-            },
-          ],
-          permissions: ["UPDATE"],
-          max: 1,
-        },
+        label: PIN_LABEL,
+        filter: { every: NOT_HIDDEN_FILTER, permissions: ["UPDATE"], max: 1 },
       },
       {
-        // GMs can pin any token regardless of hidden flag.
+        // GMs can pin any token, hidden or not.
         icon: menuIcon,
-        label: "Pin to Action Panel",
-        filter: {
-          every: [
-            { key: "layer", value: "CHARACTER", coordinator: "||" },
-            { key: "layer", value: "MOUNT" },
-            { key: "type", value: "IMAGE" },
-          ],
-          roles: ["GM"],
-          max: 1,
-        },
+        label: PIN_LABEL,
+        filter: { every: TOKEN_FILTER, roles: ["GM"], max: 1 },
       },
     ],
     onClick: (context) => {
       const itemId = context.items[0]?.id;
-      if (itemId === undefined) return;
-
-      // Read/write localStorage directly — synchronous, private per-browser,
-      // persists across page refreshes.
-      let current: string[] = [];
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw !== null) {
-          const parsed: unknown = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            current = parsed.filter((v): v is string => typeof v === "string");
-          }
-        }
-      } catch { /* ignore */ }
-
-      const next = current.includes(itemId)
-        ? current.filter((id) => id !== itemId)
-        : [...current, itemId];
-
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch { /* ignore */ }
+      if (itemId !== undefined) toggleTrackedTokenId(itemId);
     },
   });
 
-  // GM-only context menu: wipe all TFE Tracker data from a token and remove
-  // its on-map attachments, resetting it to a clean slate.
   OBR.contextMenu.create({
     id: getPluginId("clear-token-data"),
     icons: [
       {
         icon: menuIcon,
         label: "Clear TFE Data",
-        filter: {
-          every: [
-            { key: "layer", value: "CHARACTER", coordinator: "||" },
-            { key: "layer", value: "MOUNT" },
-            { key: "type", value: "IMAGE" },
-          ],
-          roles: ["GM"],
-          max: 1,
-        },
+        filter: { every: TOKEN_FILTER, roles: ["GM"], max: 1 },
       },
     ],
     onClick: async (context) => {
       const itemId = context.items[0]?.id;
       if (itemId === undefined) return;
-
-      // Clear all TFE metadata and on-map attachments from the token.
       await clearTokenData(itemId);
-
-      // Also remove the token from this user's Action panel tracker list.
-      // clearTokenData only wipes OBR metadata; localStorage must be updated
-      // separately. The StorageEvent fired here will propagate to any open
-      // Action panel iframe so it re-renders without the cleared token.
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw !== null) {
-          const parsed: unknown = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            const filtered = parsed.filter(
-              (v): v is string => typeof v === "string" && v !== itemId,
-            );
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-          }
-        }
-      } catch { /* ignore storage errors */ }
+      removeTrackedTokenId(itemId);
     },
   });
 
-  // Start the on-map display system. Return value is a cleanup fn (used in
-  // tests); ignored here since the background script runs for the session.
-  void initOnMapDisplay();
+  // The background page lives for the whole session, so the cleanup fn isn't needed.
+  initOnMapDisplay();
 });
+
+async function logVersion() {
+  try {
+    const response = await fetch(new URL("/manifest.json", window.location.origin));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const { name, version } = (await response.json()) as { name: string; version: string };
+    console.log(`${name} - version: ${version}`);
+  } catch (err) {
+    console.warn("Could not load manifest.json:", err);
+  }
+}

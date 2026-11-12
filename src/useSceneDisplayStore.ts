@@ -1,46 +1,40 @@
 import OBR, { Metadata } from "@owlbear-rodeo/sdk";
 import { create } from "zustand";
-import { DisplaySettings, DEFAULT_DISPLAY_SETTINGS } from "./characterDataHelpers";
+import {
+  DisplaySettings,
+  DEFAULT_DISPLAY_SETTINGS,
+  SCENE_DISPLAY_METADATA_ID,
+  parseDisplaySettings,
+} from "./characterDataHelpers";
 import { getPluginId } from "./getPluginId";
 
-export const SCENE_DISPLAY_METADATA_ID = "sceneDisplaySettings";
+const METADATA_KEY = getPluginId(SCENE_DISPLAY_METADATA_ID);
 
 interface SceneDisplayState {
   settings: DisplaySettings;
+  /** Merge a patch into the settings and broadcast it through scene metadata. */
   setSettings: (patch: Partial<DisplaySettings>) => void;
-  /** Called once on mount to wire up OBR.scene.metadata listeners. Returns unsubscribe fn. */
+  /** Load settings and follow scene metadata changes. Returns an unsubscribe fn. */
   init: () => () => void;
 }
 
-export const useSceneDisplayStore = create<SceneDisplayState>()((set) => ({
+export const useSceneDisplayStore = create<SceneDisplayState>()((set, get) => ({
   settings: { ...DEFAULT_DISPLAY_SETTINGS },
 
   setSettings: (patch) => {
-    set((state) => {
-      const settings = { ...state.settings, ...patch };
-      // Write to scene metadata so all participants receive the update.
-      void OBR.scene.setMetadata({
-        [getPluginId(SCENE_DISPLAY_METADATA_ID)]: settings,
-      });
-      return { settings };
-    });
+    const settings = { ...get().settings, ...patch };
+    set({ settings });
+    void OBR.scene.setMetadata({ [METADATA_KEY]: settings });
   },
 
   init: () => {
     const apply = (meta: Metadata) => {
-      const raw = meta[getPluginId(SCENE_DISPLAY_METADATA_ID)];
+      const raw = meta[METADATA_KEY];
       if (raw !== null && typeof raw === "object") {
-        const merged: DisplaySettings = {
-          ...DEFAULT_DISPLAY_SETTINGS,
-          ...(raw as Partial<DisplaySettings>),
-        };
-        set({ settings: merged });
+        set({ settings: parseDisplaySettings(raw) });
       }
     };
-
-    // Load current value immediately.
     void OBR.scene.getMetadata().then(apply);
-    // Subscribe to changes from any participant; return unsubscribe for cleanup.
     return OBR.scene.onMetadataChange(apply);
   },
 }));

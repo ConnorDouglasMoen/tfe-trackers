@@ -2,10 +2,7 @@ import OBR, { Player, Theme } from "@owlbear-rodeo/sdk";
 import { useEffect } from "react";
 import { useOwlbearStore } from "./useOwlbearStore";
 
-/**
- * Hook that keeps the Zustand OwlbearStore in sync with live OBR events.
- * Mount once near the root of each entry-point app.
- */
+/** Keep useOwlbearStore in sync with OBR. Mount once per page. */
 export function useOwlbearStoreSync() {
   const setSceneReady = useOwlbearStore((state) => state.setSceneReady);
   useEffect(() => {
@@ -17,10 +14,7 @@ export function useOwlbearStoreSync() {
   const setItems = useOwlbearStore((state) => state.setItems);
   useEffect(() => {
     if (sceneReady) {
-      // Guard against stale promise resolution: if the effect cleans up before
-      // getItems() resolves (e.g. sceneReady flips false before the fetch
-      // completes), the resolved value must not overwrite the cleared items[]
-      // that setItems([]) already wrote.
+      // Ignore a fetch that resolves after the scene has closed.
       let cancelled = false;
       OBR.scene.items.getItems().then((items) => {
         if (!cancelled) setItems(items);

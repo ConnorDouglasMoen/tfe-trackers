@@ -22,8 +22,6 @@ const TOKEN_ID = "test-token-abc";
 
 describe("onMapItemIds", () => {
 
-  // ─── Exported constants ───────────────────────────────────────────────────
-
   describe("exported constants", () => {
     it("MAX_STRAIN is 9", () => {
       expect(MAX_STRAIN).toBe(9);
@@ -37,8 +35,6 @@ describe("onMapItemIds", () => {
       expect(MAX_CONDITIONS).toBeGreaterThanOrEqual(10);
     });
   });
-
-  // ─── Strain box ID generators ─────────────────────────────────────────────
 
   describe("strain box IDs", () => {
     it("getStrainBoxBgId embeds token ID and index", () => {
@@ -68,8 +64,6 @@ describe("onMapItemIds", () => {
     });
   });
 
-  // ─── Injury circle ID generators ─────────────────────────────────────────
-
   describe("injury circle IDs", () => {
     it("getInjuryCircleBgId embeds token ID and slot", () => {
       expect(getInjuryCircleBgId(TOKEN_ID, "s0")).toBe(`${TOKEN_ID}-tfe-inj-bg-s0`);
@@ -94,8 +88,6 @@ describe("onMapItemIds", () => {
     });
   });
 
-  // ─── Condition bubble ID generators ──────────────────────────────────────
-
   describe("condition bubble IDs", () => {
     it("getConditionBgId embeds token ID and index", () => {
       expect(getConditionBgId(TOKEN_ID, 0)).toBe(`${TOKEN_ID}-tfe-cond-bg-0`);
@@ -114,8 +106,6 @@ describe("onMapItemIds", () => {
       expect(ids).toContain(getConditionTextId(TOKEN_ID, 2));
     });
   });
-
-  // ─── Name bubble ID generators ────────────────────────────────────────────
 
   describe("name bubble IDs", () => {
     it("getNameBubbleBgId embeds token ID", () => {
@@ -137,8 +127,6 @@ describe("onMapItemIds", () => {
       expect(getNameBubbleBgId("token-a")).not.toBe(getNameBubbleBgId("token-b"));
     });
   });
-
-  // ─── getAllAttachmentIds ───────────────────────────────────────────────────
 
   describe("getAllAttachmentIds", () => {
     it("returns a non-empty array", () => {
@@ -196,7 +184,6 @@ describe("onMapItemIds", () => {
     it("returns different IDs for different token IDs", () => {
       const idsA = getAllAttachmentIds("token-a");
       const idsB = getAllAttachmentIds("token-b");
-      // No overlap — all IDs are token-specific
       const setA = new Set(idsA);
       for (const id of idsB) {
         expect(setA.has(id)).toBe(false);

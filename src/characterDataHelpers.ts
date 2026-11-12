@@ -1,22 +1,22 @@
-/////////////////////////////////////////////////////////////////////
-// TFE Character Data Types
-/////////////////////////////////////////////////////////////////////
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type InjurySlot = {
   id: string;
-  description: string;     // what/where the injury is
-  complications: string[]; // list of complication strings, like conditions
+  description: string;
+  complications: string[];
   treated: boolean;
 };
 
 export type CharacterType = "survivor" | "other";
 
+export type InjuryDisplay = "all" | "filled-only" | "none";
+
+/** Scene-wide on-map display settings, stored in scene metadata. */
 export type DisplaySettings = {
   showStrain: boolean;
   showConditions: boolean;
-  // "all" = show empty + filled circles; "filled-only" = filled only; "none" = hide row entirely
-  injuryDisplay: "all" | "filled-only" | "none";
-  /** Whether to show the custom displayName bubble on the map. */
+  /** "all" shows empty slots too, "filled-only" hides them, "none" hides the row. */
+  injuryDisplay: InjuryDisplay;
   showName: boolean;
   /** Scales strain boxes and injury circles. */
   markerScale: number;
@@ -24,15 +24,11 @@ export type DisplaySettings = {
   textScale: number;
 };
 
-/**
- * Per-token display overrides. Each field is either a value that overrides
- * the scene-level DisplaySettings, or null to inherit from the scene default.
- */
+/** Per-token visibility overrides. `null` inherits the scene setting. */
 export type TokenDisplayOverrides = {
   showStrain: boolean | null;
   showConditions: boolean | null;
-  injuryDisplay: "all" | "filled-only" | "none" | null;
-  /** Per-token override for name bubble visibility. null = inherit scene setting. */
+  injuryDisplay: InjuryDisplay | null;
   showName: boolean | null;
 };
 
@@ -50,39 +46,42 @@ export type CharacterData = {
   conditions: string[];
 };
 
+/**
+ * Everything stored on a token. Survivor and Other data are kept separately
+ * so switching types never loses either one.
+ */
 export type TokenRecord = {
   activeType: CharacterType;
   survivor: CharacterData;
   other: CharacterData;
-  /** Per-token display overrides; null fields fall back to scene DisplaySettings. */
   displayOverrides: TokenDisplayOverrides;
   /**
-   * Custom name shown in the Action panel tracked-tokens list AND as the
-   * on-map name bubble. Empty string falls back to the OBR item name in the
-   * Action panel and hides the bubble on the map.
+   * Custom name for the Action panel list and the on-map name bubble. When
+   * empty, the Action panel falls back to the item name and no bubble is drawn.
    */
   displayName: string;
 };
 
-/////////////////////////////////////////////////////////////////////
-// Constants
-/////////////////////////////////////////////////////////////////////
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 export const TOKEN_RECORD_METADATA_ID = "tokenRecord";
+/** Pre-TokenRecord key that held a bare CharacterData blob. */
+export const LEGACY_CHARACTER_DATA_METADATA_ID = "characterData";
 export const HIDDEN_METADATA_ID = "hidden";
+export const SCENE_DISPLAY_METADATA_ID = "sceneDisplaySettings";
+
 export const STRAIN_MIN = 1;
 export const STRAIN_MAX = 9;
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showStrain: true,
   showConditions: true,
-  injuryDisplay: "all", // show all injury circles by default
+  injuryDisplay: "all",
   showName: true,
   markerScale: 1,
   textScale: 1,
 };
 
-/** Default overrides — all null means "use scene settings". */
 export const DEFAULT_TOKEN_DISPLAY_OVERRIDES: TokenDisplayOverrides = {
   showStrain: null,
   showConditions: null,
@@ -90,10 +89,17 @@ export const DEFAULT_TOKEN_DISPLAY_OVERRIDES: TokenDisplayOverrides = {
   showName: null,
 };
 
-/**
- * Merge scene-level settings with per-token overrides.
- * Token override wins when non-null; otherwise scene setting is used.
- */
+// ─── Display settings ─────────────────────────────────────────────────────────
+
+/** Read scene display settings from raw metadata, filling in any missing fields. */
+export function parseDisplaySettings(raw: unknown): DisplaySettings {
+  if (raw !== null && typeof raw === "object") {
+    return { ...DEFAULT_DISPLAY_SETTINGS, ...(raw as Partial<DisplaySettings>) };
+  }
+  return { ...DEFAULT_DISPLAY_SETTINGS };
+}
+
+/** Apply a token's overrides on top of the scene settings. */
 export function resolveDisplaySettings(
   scene: DisplaySettings,
   overrides: TokenDisplayOverrides,
@@ -108,9 +114,7 @@ export function resolveDisplaySettings(
   };
 }
 
-/////////////////////////////////////////////////////////////////////
-// Factory helpers
-/////////////////////////////////////////////////////////////////////
+// ─── Factories ────────────────────────────────────────────────────────────────
 
 export function createInjurySlot(): InjurySlot {
   return {
@@ -173,34 +177,36 @@ export function setActiveData(record: TokenRecord, data: CharacterData): TokenRe
     : { ...record, other: data };
 }
 
-/////////////////////////////////////////////////////////////////////
-// Type guards
-/////////////////////////////////////////////////////////////////////
+// ─── Type guards ──────────────────────────────────────────────────────────────
+// These accept older shapes too; migrateToTokenRecord normalizes them.
+
+type LegacyInjurySlot = InjurySlot & { location?: string };
 
 function isInjurySlot(v: unknown): v is InjurySlot {
-  const s = v as InjurySlot & { location?: string };
+  const s = v as LegacyInjurySlot;
   return (
     typeof s?.id === "string" &&
     (typeof s?.description === "string" || typeof s?.location === "string") &&
     typeof s?.treated === "boolean" &&
-    // complications may be legacy string or new string[]
     (Array.isArray(s?.complications) || typeof s?.complications === "string")
   );
 }
 
 function isCharacterData(v: unknown): v is CharacterData {
   const d = v as CharacterData;
-  if (typeof d?.strainMax !== "number") return false;
-  if (typeof d?.strainCurrent !== "number") return false;
-  if (typeof d?.hasSerious !== "boolean") return false;
-  if (typeof d?.hasCritical !== "boolean") return false;
-  if (typeof d?.hasLethal !== "boolean") return false;
-  if (!Array.isArray(d?.seriousInjuries) || d.seriousInjuries.length !== 2) return false;
-  if (!d.seriousInjuries.every(isInjurySlot)) return false;
-  if (!isInjurySlot(d?.criticalInjury)) return false;
-  if (!isInjurySlot(d?.lethalInjury)) return false;
-  if (d?.conditions === undefined) return false;
-  return true;
+  return (
+    typeof d?.strainMax === "number" &&
+    typeof d?.strainCurrent === "number" &&
+    typeof d?.hasSerious === "boolean" &&
+    typeof d?.hasCritical === "boolean" &&
+    typeof d?.hasLethal === "boolean" &&
+    Array.isArray(d?.seriousInjuries) &&
+    d.seriousInjuries.length === 2 &&
+    d.seriousInjuries.every(isInjurySlot) &&
+    isInjurySlot(d?.criticalInjury) &&
+    isInjurySlot(d?.lethalInjury) &&
+    d?.conditions !== undefined
+  );
 }
 
 export function isTokenRecord(v: unknown): v is TokenRecord {
@@ -209,26 +215,22 @@ export function isTokenRecord(v: unknown): v is TokenRecord {
     (r?.activeType === "survivor" || r?.activeType === "other") &&
     isCharacterData(r?.survivor) &&
     isCharacterData(r?.other)
-    // displayOverrides is added by migration, so we don't require it here
   );
 }
 
-/////////////////////////////////////////////////////////////////////
-// Migration
-/////////////////////////////////////////////////////////////////////
+// ─── Migration ────────────────────────────────────────────────────────────────
 
-/** Migrate a single InjurySlot — converts legacy string complications to string[],
- *  and migrates legacy `location` field to `description`. */
-function migrateInjurySlot(s: InjurySlot & { location?: string }): InjurySlot {
+/** Older versions stored conditions and complications as a single string. */
+function toStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value as string[];
+  return typeof value === "string" && value.length > 0 ? [value] : [];
+}
+
+function migrateInjurySlot(s: LegacyInjurySlot): InjurySlot {
   return {
     ...s,
-    // Migrate legacy 'location' field name to 'description'
     description: s.description ?? s.location ?? "",
-    complications: Array.isArray(s.complications)
-      ? s.complications
-      : typeof s.complications === "string" && (s.complications as string).length > 0
-        ? [s.complications as string]
-        : [],
+    complications: toStringList(s.complications),
   };
 }
 
@@ -237,11 +239,7 @@ function migrateCharacterData(d: CharacterData): CharacterData {
     ...d,
     characterType: d.characterType ?? "survivor",
     seriousCount: d.seriousCount ?? 2,
-    conditions: Array.isArray(d.conditions)
-      ? d.conditions
-      : typeof d.conditions === "string" && (d.conditions as string).length > 0
-        ? [d.conditions as string]
-        : [],
+    conditions: toStringList(d.conditions),
     seriousInjuries: [
       migrateInjurySlot(d.seriousInjuries[0]),
       migrateInjurySlot(d.seriousInjuries[1]),
@@ -251,9 +249,8 @@ function migrateCharacterData(d: CharacterData): CharacterData {
   };
 }
 
-/** Migrate a TokenDisplayOverrides blob — fills in missing null fields. */
 function migrateDisplayOverrides(raw: unknown): TokenDisplayOverrides {
-  const r = raw as Partial<TokenDisplayOverrides>;
+  const r = raw as Partial<TokenDisplayOverrides> | undefined;
   return {
     showStrain: r?.showStrain ?? null,
     showConditions: r?.showConditions ?? null,
@@ -262,25 +259,32 @@ function migrateDisplayOverrides(raw: unknown): TokenDisplayOverrides {
   };
 }
 
+/**
+ * Normalize whatever is stored on a token into a current TokenRecord. Handles
+ * older TokenRecords, bare CharacterData blobs, and missing or invalid data.
+ */
 export function migrateToTokenRecord(raw: unknown): TokenRecord {
   if (isTokenRecord(raw)) {
-    const r = raw as TokenRecord & { displayAlias?: string };
+    // Older records may lack displayName, or carry it under `displayAlias`.
+    const r = raw as Omit<TokenRecord, "displayName"> & {
+      displayName?: string;
+      displayAlias?: string;
+    };
+    const hasDisplayName = typeof r.displayName === "string" && r.displayName !== "";
     return {
       activeType: r.activeType,
       survivor: migrateCharacterData(r.survivor),
       other: migrateCharacterData(r.other),
       displayOverrides: migrateDisplayOverrides(r.displayOverrides),
-      // Migrate legacy displayAlias into displayName if displayName is unset.
-      displayName: r.displayName !== "" ? r.displayName : r.displayAlias ?? "",
+      displayName: hasDisplayName ? (r.displayName as string) : r.displayAlias ?? "",
     };
   }
+
+  const record = createDefaultTokenRecord();
   if (isCharacterData(raw)) {
     const migrated = migrateCharacterData(raw);
-    const defaults = createDefaultTokenRecord();
-    if (migrated.characterType === "other") {
-      return { activeType: "other", survivor: defaults.survivor, other: migrated, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES }, displayName: "" };
-    }
-    return { activeType: "survivor", survivor: migrated, other: defaults.other, displayOverrides: { ...DEFAULT_TOKEN_DISPLAY_OVERRIDES }, displayName: "" };
+    record.activeType = migrated.characterType;
+    record[migrated.characterType] = migrated;
   }
-  return createDefaultTokenRecord();
+  return record;
 }

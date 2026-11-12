@@ -2,148 +2,95 @@ import OBR, { Item } from "@owlbear-rodeo/sdk";
 import { getPluginId } from "./getPluginId";
 import {
   TokenRecord,
+  CharacterData,
   TOKEN_RECORD_METADATA_ID,
+  LEGACY_CHARACTER_DATA_METADATA_ID,
   HIDDEN_METADATA_ID,
   migrateToTokenRecord,
   createDefaultTokenRecord,
   getActiveData,
-  CharacterData,
 } from "./characterDataHelpers";
+import { getAllAttachmentIds } from "./background/onMapItemIds";
 
-/////////////////////////////////////////////////////////////////////
-// TokenRecord read / write
-/////////////////////////////////////////////////////////////////////
+// ─── TokenRecord read / write ─────────────────────────────────────────────────
 
-/**
- * Write a TokenRecord to a specific item by its OBR item ID.
- * Used by the Action panel tracked-token rows, which target arbitrary tokens
- * rather than the current selection.
- */
+async function getItemById(itemId: string): Promise<Item[]> {
+  const items = await OBR.scene.items.getItems([itemId]);
+  if (items.length === 0) throw new Error(`Item not found: ${itemId}`);
+  return items;
+}
+
+async function getSingleSelectedItem(): Promise<Item[]> {
+  const selection = await OBR.player.getSelection();
+  if (selection === undefined || selection.length !== 1) {
+    throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
+  }
+  return OBR.scene.items.getItems(selection);
+}
+
+async function setMetadata(items: Item[], key: string, value: unknown): Promise<void> {
+  await OBR.scene.items.updateItems(items, (mutableItems) => {
+    for (const item of mutableItems) item.metadata[getPluginId(key)] = value;
+  });
+}
+
+/** Write a record to a specific token, regardless of the current selection. */
 export async function writeTokenRecordToItem(
   itemId: string,
   record: TokenRecord,
 ): Promise<void> {
-  const items = await OBR.scene.items.getItems([itemId]);
-  if (items.length === 0) {
-    throw new Error(`Item not found: ${itemId}`);
-  }
-  await OBR.scene.items.updateItems(items, (mutableItems) => {
-    for (const item of mutableItems) {
-      item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
-    }
-  });
+  await setMetadata(await getItemById(itemId), TOKEN_RECORD_METADATA_ID, record);
 }
 
-/** Write a TokenRecord to the currently selected item. */
-export async function writeTokenRecordToSelection(
-  record: TokenRecord,
-): Promise<void> {
-  const selection = await OBR.player.getSelection();
-  const selectedItems = await OBR.scene.items.getItems(selection);
-
-  if (selection === undefined || selection.length !== 1) {
-    throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
-  }
-
-  await OBR.scene.items.updateItems(selectedItems, (items) => {
-    for (const item of items) {
-      item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] = record;
-    }
-  });
+export async function writeTokenRecordToSelection(record: TokenRecord): Promise<void> {
+  await setMetadata(await getSingleSelectedItem(), TOKEN_RECORD_METADATA_ID, record);
 }
 
-/** Read and migrate a TokenRecord from the currently selected item.
- * Accepts the already-fetched items list to avoid a redundant full-scene
- * getItems() call — the caller (TokenMenu) always has items available.
+/**
+ * Read the record of the selected token. Takes the scene items the caller
+ * already has so it doesn't need to fetch them again.
  */
-export async function getTokenRecordFromSelection(
-  items: Item[],
-): Promise<TokenRecord> {
+export async function getTokenRecordFromSelection(items: Item[]): Promise<TokenRecord> {
   const selection = await OBR.player.getSelection();
   const selectedItem = items.find((item) => item.id === selection?.[0]);
   if (selectedItem === undefined) throw new TypeError("No selected item found");
   return getTokenRecordFromItem(selectedItem);
 }
 
-/**
- * Extract and migrate a TokenRecord from an item's metadata.
- * Also handles legacy CharacterData blobs saved before TokenRecord existed.
- * Falls back to a fresh default record if nothing is stored.
- */
+/** Read a token's record, falling back to the legacy key and then to defaults. */
 export function getTokenRecordFromItem(item: Item): TokenRecord {
-  // Check new key first
-  const raw = item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)];
-  if (raw !== undefined) return migrateToTokenRecord(raw);
-
-  // Fall back to legacy key (CHARACTER_DATA_METADATA_ID) for old tokens
-  const legacy = item.metadata[getPluginId("characterData")];
-  if (legacy !== undefined) return migrateToTokenRecord(legacy);
-
-  return createDefaultTokenRecord();
+  const raw =
+    item.metadata[getPluginId(TOKEN_RECORD_METADATA_ID)] ??
+    item.metadata[getPluginId(LEGACY_CHARACTER_DATA_METADATA_ID)];
+  return raw === undefined ? createDefaultTokenRecord() : migrateToTokenRecord(raw);
 }
 
-/** Convenience: get only the active CharacterData from an item (used by on-map display). */
 export function getActiveDataFromItem(item: Item): CharacterData {
   return getActiveData(getTokenRecordFromItem(item));
 }
 
-/////////////////////////////////////////////////////////////////////
-// Clear all TFE data from a token
-/////////////////////////////////////////////////////////////////////
-
-/**
- * Remove all TFE Tracker metadata keys from a specific item and delete every
- * on-map attachment that belongs to it.  GM-only: called from the context menu
- * "Clear TFE Data" action in background.ts.
- */
+/** Remove all of this extension's metadata from a token, plus its on-map attachments. */
 export async function clearTokenData(itemId: string): Promise<void> {
-  const items = await OBR.scene.items.getItems([itemId]);
-  if (items.length === 0) {
-    throw new Error(`Item not found: ${itemId}`);
-  }
+  const keys = [
+    TOKEN_RECORD_METADATA_ID,
+    LEGACY_CHARACTER_DATA_METADATA_ID,
+    HIDDEN_METADATA_ID,
+  ].map(getPluginId);
 
-  // Strip both the current tokenRecord key and the legacy characterData key,
-  // as well as the hidden flag, so the token is fully reset.
-  const keysToDelete = [
-    getPluginId(TOKEN_RECORD_METADATA_ID),
-    getPluginId("characterData"),        // legacy key
-    getPluginId(HIDDEN_METADATA_ID),
-  ];
-
-  await OBR.scene.items.updateItems(items, (mutableItems) => {
+  await OBR.scene.items.updateItems(await getItemById(itemId), (mutableItems) => {
     for (const item of mutableItems) {
-      for (const key of keysToDelete) {
-        delete item.metadata[key];
-      }
+      for (const key of keys) delete item.metadata[key];
     }
   });
-
-  // Remove every on-map attachment created by the on-map display system.
-  const { getAllAttachmentIds } = await import("./background/onMapItemIds");
-  const attachmentIds = getAllAttachmentIds(itemId);
-  await OBR.scene.local.deleteItems(attachmentIds);
+  await OBR.scene.local.deleteItems(getAllAttachmentIds(itemId));
 }
 
-/////////////////////////////////////////////////////////////////////
-// Hidden flag
-/////////////////////////////////////////////////////////////////////
+// ─── Hidden flag ──────────────────────────────────────────────────────────────
 
 export function getHiddenFromItem(item: Item): boolean {
-  const val = item.metadata[getPluginId(HIDDEN_METADATA_ID)];
-  return typeof val === "boolean" ? val : false;
+  return item.metadata[getPluginId(HIDDEN_METADATA_ID)] === true;
 }
 
 export async function writeHiddenToSelection(hidden: boolean): Promise<void> {
-  const selection = await OBR.player.getSelection();
-  const selectedItems = await OBR.scene.items.getItems(selection);
-
-  if (selection === undefined || selection.length !== 1) {
-    throw new Error(`Expected 1 selected item, got ${selection?.length ?? 0}.`);
-  }
-
-  await OBR.scene.items.updateItems(selectedItems, (items) => {
-    for (const item of items) {
-      item.metadata[getPluginId(HIDDEN_METADATA_ID)] = hidden;
-    }
-  });
+  await setMetadata(await getSingleSelectedItem(), HIDDEN_METADATA_ID, hidden);
 }

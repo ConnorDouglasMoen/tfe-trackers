@@ -1,18 +1,5 @@
 // @vitest-environment jsdom
-/**
- * Component-level tests for TrackedTokenRow.
- *
- * Focuses on the behaviours unique to this component that are not already
- * covered by the pure mutation helper tests in tokenRecordMutations.test.ts:
- *
- *  1. applyMutation plumbing — mutation callbacks reach writeTokenRecordToItem.
- *  2. Record re-sync — local state updates when the item prop changes.
- *  3. commitName — trims, clears when matching item.name, writes via applyMutation.
- *  4. cancelEditName — exits edit mode without writing.
- *  5. Unpin button — calls useTrackedTokensStore.untrackToken.
- *
- * OBR.viewport is included in the global setup mock in src/test/setup.ts.
- */
+import { StrictMode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Item } from "@owlbear-rodeo/sdk";
@@ -25,8 +12,6 @@ import {
   TOKEN_RECORD_METADATA_ID,
   TokenRecord,
 } from "../characterDataHelpers";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Build a minimal Item with an embedded TokenRecord in its metadata. */
 function makeItem(record: TokenRecord, overrides: Partial<Item> = {}): Item {
@@ -46,7 +31,6 @@ function makeItem(record: TokenRecord, overrides: Partial<Item> = {}): Item {
   } as unknown as Item;
 }
 
-/** Reset the tracked tokens store to a clean slate between tests. */
 function resetStore() {
   useTrackedTokensStore.setState({ trackedTokenIds: [] });
 }
@@ -56,11 +40,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// ─── applyMutation plumbing ───────────────────────────────────────────────────
-
 describe("applyMutation plumbing", () => {
   it("calls writeTokenRecordToItem when a mutation callback fires", async () => {
-    // writeTokenRecordToItem calls OBR.scene.items.getItems then updateItems.
     vi.mocked(OBR.scene.items.getItems).mockResolvedValue([
       makeItem(createDefaultTokenRecord()) as any,
     ]);
@@ -70,21 +51,33 @@ describe("applyMutation plumbing", () => {
 
     render(<TrackedTokenRow item={item} displayName="Goblin" />);
 
-    // Expand the row to reveal the editor.
     fireEvent.click(screen.getByRole("button", { name: "Toggle Goblin" }));
 
-    // Click the first strain box to set strainCurrent = 1.
     const strainBox = screen.getByLabelText("Strain box 1");
     await act(async () => { fireEvent.click(strainBox); });
 
-    // getItems was called by writeTokenRecordToItem.
     expect(OBR.scene.items.getItems).toHaveBeenCalledWith(["item-abc"]);
-    // updateItems was called with the mutated record.
     expect(OBR.scene.items.updateItems).toHaveBeenCalled();
   });
-});
+  it("writes once per edit under StrictMode", async () => {
+    vi.mocked(OBR.scene.items.getItems).mockResolvedValue([
+      makeItem(createDefaultTokenRecord()) as any,
+    ]);
+    const item = makeItem(createDefaultTokenRecord());
 
-// ─── Record re-sync from item prop ────────────────────────────────────────────
+    render(
+      <StrictMode>
+        <TrackedTokenRow item={item} displayName="Goblin" />
+      </StrictMode>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Goblin" }));
+    await act(async () => { fireEvent.click(screen.getByLabelText("Strain box 1")); });
+
+    expect(OBR.scene.items.getItems).toHaveBeenCalledTimes(1);
+    expect(OBR.scene.items.updateItems).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("record re-sync from item prop", () => {
   it("updates local state when the item prop changes externally", () => {
@@ -93,13 +86,11 @@ describe("record re-sync from item prop", () => {
 
     const { rerender } = render(<TrackedTokenRow item={item} displayName="Goblin" />);
 
-    // Expand the row.
     fireEvent.click(screen.getByRole("button", { name: "Toggle Goblin" }));
 
-    // Initially strainCurrent = 0.
     expect(screen.getByText("0 / 3 taken")).toBeInTheDocument();
 
-    // Simulate an external edit: new item prop with strainCurrent = 2.
+    // Someone else edits the token.
     const updatedRecord = {
       ...record,
       survivor: { ...record.survivor, strainCurrent: 2 },
@@ -110,8 +101,6 @@ describe("record re-sync from item prop", () => {
     expect(screen.getByText("2 / 3 taken")).toBeInTheDocument();
   });
 });
-
-// ─── commitName ───────────────────────────────────────────────────────────────
 
 describe("commitName", () => {
   it("enters edit mode when the edit-label button is clicked", () => {
@@ -163,9 +152,7 @@ describe("commitName", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    // Edit mode exited — input no longer present.
     expect(screen.queryByLabelText("Edit token label")).not.toBeInTheDocument();
-    // writeTokenRecordToItem was called.
     expect(OBR.scene.items.updateItems).toHaveBeenCalled();
   });
 
@@ -174,7 +161,6 @@ describe("commitName", () => {
       makeItem(createDefaultTokenRecord()) as any,
     ]);
 
-    // updateItems callback captures the mutated record.
     let writtenRecord: TokenRecord | undefined;
     vi.mocked(OBR.scene.items.updateItems).mockImplementationOnce(
       async (_items: any, callback: any) => {
@@ -191,7 +177,6 @@ describe("commitName", () => {
 
     fireEvent.click(screen.getByLabelText("Edit label for Goblin"));
     const input = screen.getByLabelText("Edit token label");
-    // Type the same as item.name — should clear displayName.
     fireEvent.change(input, { target: { value: "Goblin" } });
 
     await act(async () => {
@@ -201,8 +186,6 @@ describe("commitName", () => {
     expect(writtenRecord?.displayName).toBe("");
   });
 });
-
-// ─── cancelEditName ───────────────────────────────────────────────────────────
 
 describe("cancelEditName", () => {
   it("exits edit mode on Escape without writing", async () => {
@@ -215,9 +198,7 @@ describe("cancelEditName", () => {
 
     fireEvent.keyDown(input, { key: "Escape" });
 
-    // Edit mode exited.
     expect(screen.queryByLabelText("Edit token label")).not.toBeInTheDocument();
-    // writeTokenRecordToItem was NOT called.
     expect(OBR.scene.items.updateItems).not.toHaveBeenCalled();
   });
 
@@ -234,8 +215,6 @@ describe("cancelEditName", () => {
     expect(OBR.scene.items.updateItems).not.toHaveBeenCalled();
   });
 });
-
-// ─── Unpin button ─────────────────────────────────────────────────────────────
 
 describe("unpin button", () => {
   it("calls untrackToken with the item ID when clicked", () => {
