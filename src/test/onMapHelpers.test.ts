@@ -90,6 +90,22 @@ describe("buildStrainItems", () => {
     expect(addItems).toHaveLength(10); // 5 × 2
   });
 
+  it("wraps past 9 boxes onto rows stacked above the first", () => {
+    const image = createMockImage();
+    const data = createOtherData();
+    data.strainMax = 18;
+    const addItems: Item[] = [];
+
+    buildStrainItems(image, 150, data, defaultSceneSettings, addItems);
+
+    const box = (i: number) =>
+      addItems.find((item: any) => item.id === `test-token-tfe-strain-bg-${i}`) as any;
+    expect(addItems).toHaveLength(36);
+    expect(box(9).position.x).toBe(box(0).position.x);
+    expect(box(9).position.y).toBeLessThan(box(0).position.y);
+    expect(box(17).position.y).toBe(box(9).position.y);
+  });
+
   it("boxes are RECTANGLE shapes attached to the image", () => {
     const image = createMockImage("tok-1");
     const data = createSurvivorData();

@@ -4,7 +4,7 @@ import { useCharacterDataStore } from "../useCharacterDataStore";
 import {
   createDefaultTokenRecord,
   STRAIN_MIN,
-  STRAIN_MAX,
+  STRAIN_LIMITS,
   getActiveData,
 } from "../characterDataHelpers";
 
@@ -114,9 +114,13 @@ describe("setStrainMax", () => {
     expect(useCharacterDataStore.getState().data.strainMax).toBe(STRAIN_MIN);
   });
 
-  it("clamps to STRAIN_MAX when given a value above STRAIN_MAX", () => {
+  it("clamps to the character type's limit", () => {
     useCharacterDataStore.getState().setStrainMax(99);
-    expect(useCharacterDataStore.getState().data.strainMax).toBe(STRAIN_MAX);
+    expect(useCharacterDataStore.getState().data.strainMax).toBe(STRAIN_LIMITS.survivor);
+
+    useCharacterDataStore.getState().setCharacterType("other");
+    useCharacterDataStore.getState().setStrainMax(99);
+    expect(useCharacterDataStore.getState().data.strainMax).toBe(STRAIN_LIMITS.other);
   });
 
   it("reduces strainCurrent when it would exceed the new max", () => {

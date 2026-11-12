@@ -6,7 +6,7 @@ import {
   createInjurySlot,
   getActiveData,
   STRAIN_MIN,
-  STRAIN_MAX,
+  STRAIN_LIMITS,
 } from "../characterDataHelpers";
 import {
   applyStrainCurrent,
@@ -70,7 +70,7 @@ describe("applyStrainCurrent", () => {
 });
 
 describe("applyStrainMax", () => {
-  it("sets strainMax within [STRAIN_MIN, STRAIN_MAX]", () => {
+  it("sets strainMax within [STRAIN_MIN, limit]", () => {
     const r = createDefaultTokenRecord();
     expect(active(applyStrainMax(r, 7)).strainMax).toBe(7);
   });
@@ -80,9 +80,15 @@ describe("applyStrainMax", () => {
     expect(active(applyStrainMax(r, 0)).strainMax).toBe(STRAIN_MIN);
   });
 
-  it("clamps to STRAIN_MAX when value exceeds STRAIN_MAX", () => {
+  it("clamps a Survivor's max strain to 9", () => {
     const r = createDefaultTokenRecord();
-    expect(active(applyStrainMax(r, 99)).strainMax).toBe(STRAIN_MAX);
+    expect(active(applyStrainMax(r, 99)).strainMax).toBe(STRAIN_LIMITS.survivor);
+  });
+
+  it("clamps an Other's max strain to 18", () => {
+    const r = applyCharacterType(createDefaultTokenRecord(), "other");
+    expect(active(applyStrainMax(r, 18)).strainMax).toBe(18);
+    expect(active(applyStrainMax(r, 99)).strainMax).toBe(STRAIN_LIMITS.other);
   });
 
   it("reduces strainCurrent when it exceeds the new max", () => {

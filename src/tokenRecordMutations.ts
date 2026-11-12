@@ -8,7 +8,7 @@ import {
   CharacterType,
   InjurySlot,
   STRAIN_MIN,
-  STRAIN_MAX,
+  STRAIN_LIMITS,
   getActiveData,
   setActiveData,
 } from "./characterDataHelpers";
@@ -30,10 +30,14 @@ export function applyStrainCurrent(record: TokenRecord, current: number): TokenR
   return applyDataPatch(record, { strainCurrent: clamp(current, 0, strainMax) });
 }
 
-/** Set max strain, clamped to [STRAIN_MIN, STRAIN_MAX]; current strain is lowered to fit. */
+/**
+ * Set max strain, clamped between STRAIN_MIN and the character type's limit.
+ * Current strain is lowered to fit.
+ */
 export function applyStrainMax(record: TokenRecord, max: number): TokenRecord {
-  const strainMax = clamp(max, STRAIN_MIN, STRAIN_MAX);
-  const strainCurrent = Math.min(getActiveData(record).strainCurrent, strainMax);
+  const active = getActiveData(record);
+  const strainMax = clamp(max, STRAIN_MIN, STRAIN_LIMITS[active.characterType]);
+  const strainCurrent = Math.min(active.strainCurrent, strainMax);
   return applyDataPatch(record, { strainMax, strainCurrent });
 }
 

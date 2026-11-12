@@ -13,6 +13,7 @@ import {
   DEFAULT_TOKEN_DISPLAY_OVERRIDES,
   STRAIN_MIN,
   STRAIN_MAX,
+  STRAIN_LIMITS,
   TokenRecord,
 } from "../characterDataHelpers";
 
@@ -23,8 +24,9 @@ describe("characterDataHelpers", () => {
       expect(STRAIN_MIN).toBe(1);
     });
 
-    it("STRAIN_MAX is 9", () => {
-      expect(STRAIN_MAX).toBe(9);
+    it("limits Survivors to 9 max strain and Others to 18", () => {
+      expect(STRAIN_LIMITS).toEqual({ survivor: 9, other: 18 });
+      expect(STRAIN_MAX).toBe(18);
     });
 
     it("DEFAULT_DISPLAY_SETTINGS has expected defaults", () => {

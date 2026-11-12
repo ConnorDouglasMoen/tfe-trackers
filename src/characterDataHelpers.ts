@@ -71,7 +71,10 @@ export const HIDDEN_METADATA_ID = "hidden";
 export const SCENE_DISPLAY_METADATA_ID = "sceneDisplaySettings";
 
 export const STRAIN_MIN = 1;
-export const STRAIN_MAX = 9;
+/** Highest max strain each character type can be given. */
+export const STRAIN_LIMITS: Record<CharacterType, number> = { survivor: 9, other: 18 };
+/** Highest max strain of any character type. */
+export const STRAIN_MAX = Math.max(...Object.values(STRAIN_LIMITS));
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   showStrain: true,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CharacterData, CharacterType, InjurySlot, STRAIN_MIN, STRAIN_MAX } from "../characterDataHelpers";
+import { CharacterData, CharacterType, InjurySlot, STRAIN_MIN, STRAIN_LIMITS } from "../characterDataHelpers";
 import { getSeriousTier } from "../tokenRecordMutations";
 import StrainRow from "./StrainRow";
 import InjurySlotCard from "./InjurySlotCard";
@@ -194,7 +194,7 @@ export function TokenEditor({
               onDecrement={() => onSetStrainMax(data.strainMax - 1)}
               onIncrement={() => onSetStrainMax(data.strainMax + 1)}
               disableDecrement={data.strainMax <= STRAIN_MIN}
-              disableIncrement={data.strainMax >= STRAIN_MAX}
+              disableIncrement={data.strainMax >= STRAIN_LIMITS[data.characterType]}
             />
           </div>
         </div>

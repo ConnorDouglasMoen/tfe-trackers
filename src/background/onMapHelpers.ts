@@ -27,6 +27,8 @@ const FONT = "Roboto, sans-serif";
 const TEXT_VERTICAL_OFFSET = -1;
 
 const BOX_SIZE = 14;
+/** Strain boxes per row; further rows stack upward. */
+const BOXES_PER_ROW = 9;
 const BOX_GAP = 3;
 const CIRCLE_SIZE = 16;
 const CIRCLE_GAP = 2;
@@ -231,7 +233,7 @@ function buildBubble(opts: {
   );
 }
 
-// ─── Strain boxes (row just above the token's bottom edge) ────────────────────
+// ─── Strain boxes (rows just above the token's bottom edge) ───────────────────
 
 export function buildStrainItems(
   image: Image,
@@ -242,16 +244,18 @@ export function buildStrainItems(
 ): void {
   const bounds = getTokenBounds(image, sceneDpi);
   const layout = getMarkerLayout(displaySettings);
-  const y = bounds.bottom - (layout.boxSize + layout.rowGap);
+  const baseY = bounds.bottom - (layout.boxSize + layout.rowGap);
 
   for (let i = 0; i < data.strainMax; i++) {
     const filled = i < data.strainCurrent;
+    const row = Math.floor(i / BOXES_PER_ROW);
+    const column = i % BOXES_PER_ROW;
     buildShapeWithText({
       image,
       shapeId: getStrainBoxBgId(image.id, i),
       textId: getStrainBoxXId(image.id, i),
-      x: bounds.left + layout.rowGap + i * (layout.boxSize + layout.boxGap),
-      y,
+      x: bounds.left + layout.rowGap + column * (layout.boxSize + layout.boxGap),
+      y: baseY - row * (layout.boxSize + layout.boxGap),
       size: layout.boxSize,
       shapeType: "RECTANGLE",
       fillColor: filled ? "#b42828" : "#1a0000",

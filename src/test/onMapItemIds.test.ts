@@ -23,8 +23,8 @@ const TOKEN_ID = "test-token-abc";
 describe("onMapItemIds", () => {
 
   describe("exported constants", () => {
-    it("MAX_STRAIN is 9", () => {
-      expect(MAX_STRAIN).toBe(9);
+    it("MAX_STRAIN covers the largest strain limit (18)", () => {
+      expect(MAX_STRAIN).toBe(18);
     });
 
     it("INJURY_SLOTS covers all four slots", () => {
